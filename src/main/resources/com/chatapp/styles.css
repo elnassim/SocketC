@@ -1,0 +1,97 @@
+/* ====================== Panneau de gauche (contacts) ====================== */
+.contacts-panel {
+    -fx-pref-width: 250;
+    -fx-background-color: #f8f8f8;
+}
+.contacts-header {
+    -fx-padding: 10;
+    -fx-background-color: #00a884;
+    -fx-alignment: center-left;
+}
+.contacts-header-label {
+    -fx-text-fill: white;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+.contacts-search {
+    -fx-padding: 5 10;
+    -fx-background-color: #ededed;
+}
+.contacts-list {
+    -fx-background-color: #ffffff;
+}
+
+/* ====================== Zone centrale (conversation) ====================== */
+.chat-area {
+    -fx-background-color: #ffffff;
+}
+.chat-header {
+    -fx-padding: 10;
+    -fx-background-color: #00a884;
+    -fx-alignment: center-left;
+}
+.chat-header-label {
+    -fx-text-fill: white;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.messages-scroll-pane {
+    -fx-background-color: transparent;
+}
+.messages-container {
+    -fx-padding: 10;
+    -fx-spacing: 8;
+}
+
+/* ====================== Bulles de message ====================== */
+/* Bulles reçues (gauche) */
+.bubble-left {
+    -fx-background-color: #e0e0e0; /* gris clair */
+    -fx-padding: 8 12;
+    -fx-background-radius: 15;
+    -fx-wrap-text: true;
+    -fx-max-width: 400;
+}
+.bubble-left-private {
+    -fx-background-color: #d1c4e9; /* violet clair */
+    -fx-padding: 8 12;
+    -fx-background-radius: 15;
+    -fx-wrap-text: true;
+    -fx-max-width: 400;
+}
+
+/* Bulles envoyées (droite) */
+.bubble-right {
+    -fx-background-color: #dcf8c6; /* vert clair style WhatsApp */
+    -fx-padding: 8 12;
+    -fx-background-radius: 15;
+    -fx-wrap-text: true;
+    -fx-max-width: 400;
+}
+.bubble-right-private {
+    -fx-background-color: #b2ebf2; /* bleu clair */
+    -fx-padding: 8 12;
+    -fx-background-radius: 15;
+    -fx-wrap-text: true;
+    -fx-max-width: 400;
+}
+
+/* Messages système */
+.system-message {
+    -fx-text-fill: #666666;
+    -fx-font-style: italic;
+    -fx-font-size: 12px;
+}
+
+/* ====================== Barre de saisie ====================== */
+.message-input-container {
+    -fx-padding: 10;
+    -fx-background-color: #ededed;
+}
+.primary-button {
+    -fx-background-color: #00a884;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 5;
+}

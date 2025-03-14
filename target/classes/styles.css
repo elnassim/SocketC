@@ -1,0 +1,68 @@
+.root {
+    -fx-background-color: #f5f5f5;
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.form-container {
+    -fx-background-color: white;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 10, 0, 0, 0);
+    -fx-background-radius: 8;
+    -fx-padding: 20;
+}
+
+.header-label {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #3c3c3c;
+    -fx-padding: 0 0 10 0;
+}
+
+.button {
+    -fx-cursor: hand;
+    -fx-background-radius: 4;
+    -fx-padding: 8 16;
+}
+
+.primary-button {
+    -fx-background-color: #4e73df;
+    -fx-text-fill: white;
+}
+
+.primary-button:hover {
+    -fx-background-color: #2e59d9;
+}
+
+.secondary-button {
+    -fx-background-color: #f8f9fc;
+    -fx-border-color: #ddd;
+    -fx-text-fill: #6e707e;
+}
+
+.secondary-button:hover {
+    -fx-background-color: #eaecf4;
+}
+
+.text-field, .password-field {
+    -fx-background-color: #f8f9fc;
+    -fx-border-color: #ddd;
+    -fx-border-radius: 4;
+    -fx-padding: 8;
+}
+
+.text-field:focused, .password-field:focused {
+    -fx-border-color: #4e73df;
+    -fx-background-color: white;
+}
+
+.message-label {
+    -fx-padding: 10 0 0 0;
+    -fx-font-size: 13px;
+}
+
+.error-message {
+    -fx-text-fill: #e74a3b;
+}
+
+.success-message {
+    -fx-text-fill: #1cc88a;
+}
