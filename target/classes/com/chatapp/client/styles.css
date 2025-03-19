@@ -71,6 +71,20 @@
   -fx-text-fill: #1cc88a;
 }
 
+
+.tab-pane .tab:selected {
+  -fx-background-color: #00a884;
+}
+
+.tab-pane .tab:selected .tab-label {
+  -fx-text-fill: white;
+  -fx-font-weight: bold;
+}
+
+/* Notification styling for tabs with unread messages */
+.tab-notification {
+  -fx-background-color: #FFD700;
+}
 /* ====================== Panneau de gauche (contacts) ====================== */
 .contacts-panel {
   -fx-pref-width: 250;

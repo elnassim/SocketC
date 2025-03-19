@@ -5,6 +5,8 @@
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TabPane?>
+<?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
@@ -49,17 +51,29 @@
     <center>
         <VBox fx:id="chatArea" styleClass="chat-area">
             <HBox styleClass="chat-header">
-                <Label fx:id="contactNameLabel" text="Select a contact" styleClass="chat-header-label"/>
+                <Label fx:id="contactNameLabel" text="Conversations" styleClass="chat-header-label"/>
             </HBox>
 
-            <ScrollPane fx:id="messageScrollPane" fitToWidth="true" styleClass="messages-scroll-pane">
-                <VBox fx:id="messageContainer" styleClass="messages-container" />
-            </ScrollPane>
+            <!-- TabPane for conversations -->
+            <TabPane fx:id="conversationTabPane" VBox.vgrow="ALWAYS">
+                <!-- Default "General" tab for broadcast messages -->
+                <tabs>
+                    <Tab text="General" closable="false">
+                        <content>
+                            <VBox>
+                                <ScrollPane fx:id="messageScrollPane" fitToWidth="true" styleClass="messages-scroll-pane" VBox.vgrow="ALWAYS">
+                                    <VBox fx:id="messageContainer" styleClass="messages-container" />
+                                </ScrollPane>
 
-            <HBox alignment="CENTER" spacing="10" styleClass="message-input-container">
-                <TextField fx:id="messageInput" promptText="Type your message..." HBox.hgrow="ALWAYS" />
-                <Button fx:id="sendButton" text="Send" onAction="#handleSendButtonAction" styleClass="primary-button" />
-            </HBox>
+                                <HBox alignment="CENTER" spacing="10" styleClass="message-input-container">
+                                    <TextField fx:id="messageInput" promptText="Type your message..." HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="sendButton" text="Send" onAction="#handleSendButtonAction" styleClass="primary-button" />
+                                </HBox>
+                            </VBox>
+                        </content>
+                    </Tab>
+                </tabs>
+            </TabPane>
         </VBox>
     </center>
 </BorderPane>

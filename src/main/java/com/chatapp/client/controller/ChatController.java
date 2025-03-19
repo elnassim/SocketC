@@ -2,6 +2,7 @@ package com.chatapp.client.controller;
 
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -21,64 +22,44 @@ import com.chatapp.common.model.User;
 import com.chatapp.client.network.ClientNetworkService;
 
 /**
- * Contrôleur principal de l'application de chat.
- * - Les messages envoyés par l'utilisateur local s'affichent à droite.
- * - Les messages reçus (d'autres utilisateurs) s'affichent à gauche.
+ * Contrôleur principal de l'application de chat avec onglets de conversation.
  */
 public class ChatController {
 
     /* ---------- FXML Nodes ---------- */
-    @FXML
-    private ScrollPane messageScrollPane;
-    @FXML
-    private VBox messageContainer;
-    @FXML
-    private TextField messageInput;
-    @FXML
-    private Button sendButton;
-    @FXML
-    private ListView<String> contactsList;
-    @FXML
-    private TextField searchField;
-    @FXML
-    private Button addContactButton;
-    @FXML
-    private Button showContactsButton;
-    @FXML
-    private Button deleteContactButton;
-    @FXML
-    private Label contactNameLabel;
+    @FXML private ScrollPane messageScrollPane;
+    @FXML private VBox messageContainer;
+    @FXML private TextField messageInput;
+    @FXML private Button sendButton;
+    @FXML private ListView<String> contactsList;
+    @FXML private TextField searchField;
+    @FXML private Button addContactButton;
+    @FXML private Button showContactsButton;
+    @FXML private Button deleteContactButton;
+    @FXML private Label contactNameLabel;
+    @FXML private TabPane conversationTabPane;
 
     /* ---------- Champs internes ---------- */
-    private String userEmail; // e-mail de l'utilisateur local
+    private String userEmail;
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
     private boolean connected = false;
-
-    /** Ensemble de contacts enregistrés localement */
     private HashSet<String> contacts = new HashSet<>();
-
-    /**
-     * conversationMap : pour chaque contact (String), liste de messages échangés.
-     */
     private Map<String, List<MessageData>> conversationMap = new HashMap<>();
-
-    /**
-     * Clé (contact) de la conversation actuellement affichée.
-     */
     private String currentConversationKey = null;
-
+    private ClientNetworkService networkService;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
+    
+    // Tab management
+    private Map<String, Tab> contactTabs = new HashMap<>();
+    private Map<String, VBox> contactMessageContainers = new HashMap<>();
 
-    /**
-     * Classe interne représentant un message (sender, contenu, etc.).
-     */
     private static class MessageData {
-        String sender; // e-mail de l'expéditeur
-        String content; // texte du message
-        boolean isPrivate; // message privé ?
-        boolean isOutgoing; // true si message émis par userEmail
+        String sender;
+        String content;
+        boolean isPrivate;
+        boolean isOutgoing;
 
         MessageData(String sender, String content, boolean isPrivate, boolean isOutgoing) {
             this.sender = sender;
@@ -88,403 +69,456 @@ public class ChatController {
         }
     }
 
-    /* ---------- Initialisation FXML ---------- */
     @FXML
     public void initialize() {
-        // Envoyer le message quand on appuie sur ENTER
         messageInput.setOnAction(event -> sendMessage());
-
-        // Auto-scroll : descendre en bas quand un nouveau message arrive
-        messageContainer.heightProperty().addListener((obs, oldVal, newVal) -> {
-            messageScrollPane.setVvalue(1.0);
+        
+        // Contact selection handler
+        contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) handleContactClick(newVal);
         });
 
-        // Sélection d'un contact => on charge sa conversation
-        contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
-                contactNameLabel.setText(newVal);
-                if (currentConversationKey == null || !currentConversationKey.equals(newVal)) {
-                    loadConversation(newVal);
-                }
+
+        conversationTabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
+            if (newTab != null) {
+                newTab.setStyle("");
             }
+        });
+    
+        // Add window close handler
+        Platform.runLater(() -> {
+            Stage stage = (Stage) messageInput.getScene().getWindow();
+            stage.setOnCloseRequest(event -> {
+                connected = false;
+                try {
+                    if (socket != null && !socket.isClosed()) {
+                        socket.close();
+                    }
+                } catch (IOException e) {
+                    System.err.println("Error closing socket: " + e.getMessage());
+                }
+            });
         });
     }
 
-    /**
-     * Appelée après la connexion : on récupère le userEmail et le socket.
-     */
     public void initChatSession(String email, Socket socket, BufferedReader in, PrintWriter out) {
         this.userEmail = email;
         this.socket = socket;
         this.in = in;
         this.out = out;
         this.connected = true;
-
-        // Charger les contacts depuis le fichier local
+        
+        // Initialize network service
+        this.networkService = new ClientNetworkService();
+        
+        // Set up retry mechanism for pending messages
+        try {
+            this.networkService.initRetryMechanism();
+        } catch (Exception e) {
+            addSystemMessage("Error initializing message retry system: " + e.getMessage());
+        }
+    
         loadContacts();
         refreshContactsList();
-
         addSystemMessage("Connected as " + userEmail);
-        addSystemMessage("Your contacts: " + contacts);
-        addSystemMessage("Commands:\n"
-                + "/list - List your contacts\n"
-                + "@email@example.com message - Send a private message");
-
-        // Lancement du thread d'écoute des messages
         startMessageListener();
     }
 
-    /**
-     * Thread écoutant les messages entrants depuis le serveur.
-     */
     private void startMessageListener() {
         new Thread(() -> {
             try {
                 String line;
                 while (connected && (line = in.readLine()) != null) {
                     final String receivedMsg = line;
-                    System.out.println("Received: " + receivedMsg);
-
-                    try {
-                        JSONObject msgJson = new JSONObject(receivedMsg);
-                        if (msgJson.has("type") && msgJson.has("content")) {
-                            String type = msgJson.getString("type");
-                            String content = msgJson.getString("content");
-                            // Le serveur doit envoyer "sender" : l'e-mail de l'expéditeur
-                            String sender = msgJson.optString("sender", "Server");
-
-                            // S'il s'agit de mes propres messages (sender == userEmail), je les ignore
-                            // pour ne pas les afficher en double. (Dépend de votre logique serveur.)
-                            if (sender.equals(userEmail)) {
-                                continue;
-                            }
-
-                            // Si c'est un message privé
-                            if ("private".equals(type)) {
-                                // On stocke la conversation sous la clé "sender" (c'est la personne qui nous
-                                // écrit)
-                                storeMessage(sender, sender, content, true, false);
-                            } else {
-                                // Sinon, c'est un broadcast => on le stocke sous la clé "All"
-                                storeMessage("All", sender, content, false, false);
-                            }
-                        } else {
-                            // JSON incomplet => on l'affiche brut
-                            Platform.runLater(() -> addMessage("", receivedMsg));
-                        }
-                    } catch (JSONException e) {
-                        // Pas du JSON => affichage brut
-                        Platform.runLater(() -> addMessage("", receivedMsg));
-                    }
+                    Platform.runLater(() -> handleIncomingMessage(receivedMsg));
                 }
             } catch (IOException e) {
-                if (connected) {
-                    Platform.runLater(() -> addSystemMessage("Connection lost: " + e.getMessage()));
-                }
+                if (connected) Platform.runLater(() -> 
+                    addSystemMessage("Connection lost: " + e.getMessage()));
             }
         }).start();
     }
 
-    /* ---------- Envoi de message ---------- */
-    @FXML
-    public void handleSendButtonAction(ActionEvent event) {
-        sendMessage();
+    private void addOutgoingMessageToContainer(VBox container, String text) {
+        HBox box = new HBox();
+        box.setAlignment(Pos.CENTER_RIGHT);
+        box.setPadding(new Insets(5, 10, 5, 10));
+        
+        Label label = new Label("You: " + text);
+        label.getStyleClass().add("bubble-right");
+        label.setWrapText(true);
+        label.setMaxWidth(300);
+        
+        box.getChildren().add(label);
+        container.getChildren().add(box);
     }
 
-    private void sendMessage() {
-        String messageText = messageInput.getText().trim();
-        if (messageText.isEmpty() || !connected)
-            return;
-
-        try {
-            // Commande /list
-            if (messageText.startsWith("/list")) {
-                Platform.runLater(() -> addSystemMessage("Your contacts: " + contacts));
+    private void handlePrivateMessage(String sender, String content) {
+        storeMessage(sender, sender, content, true, false);
+        
+        Platform.runLater(() -> {
+            // Auto-add sender to contacts if not already there
+            if (!contacts.contains(sender)) {
+                contacts.add(sender);
+                saveContacts();
+                refreshContactsList();
             }
-            // Message privé => @destinataire
-            else if (messageText.startsWith("@")) {
-                int spaceIndex = messageText.indexOf(" ");
-                if (spaceIndex > 1) {
-                    String recipient = messageText.substring(1, spaceIndex);
-                    String content = messageText.substring(spaceIndex + 1);
-
-                    if (contacts.contains(recipient)) {
-                        JSONObject privateMsg = new JSONObject();
-                        privateMsg.put("type", "private");
-                        privateMsg.put("to", recipient);
-                        privateMsg.put("content", content);
-                        // IMPORTANT : on envoie "sender" = userEmail
-                        privateMsg.put("sender", userEmail);
-                        out.println(privateMsg.toString());
-
-                        // On stocke en local le message comme "sortant" (isOutgoing = true)
-                        storeMessage(recipient, userEmail, content, true, true);
-                    } else {
-                        Platform.runLater(() -> addSystemMessage("User not in contacts. Add them first."));
-                    }
-                } else {
-                    Platform.runLater(() -> addSystemMessage("Usage: @email@example.com message"));
+            
+            // Create or get tab for this sender
+            if (!contactTabs.containsKey(sender)) {
+                Tab tab = createContactTab(sender);
+                if (!conversationTabPane.getTabs().contains(tab)) {
+                    conversationTabPane.getTabs().add(tab);
                 }
             }
-            // Sinon, broadcast
-            else {
-                JSONObject broadcastMsg = new JSONObject();
-                broadcastMsg.put("type", "broadcast");
-                broadcastMsg.put("content", messageText);
-                broadcastMsg.put("sender", userEmail);
-                out.println(broadcastMsg.toString());
-
-                storeMessage("All", userEmail, messageText, false, true);
-            }
-        } catch (Exception e) {
-            Platform.runLater(() -> addSystemMessage("Error sending message: " + e.getMessage()));
-        }
-
-        messageInput.clear();
-        messageInput.requestFocus();
+            
+            // Add message to conversation container
+            addIncomingMessageToContainer(contactMessageContainers.get(sender), sender, content);
+            
+            // Highlight tab if not currently selected
+            flashContactTab(sender);
+        });
     }
 
-    /**
-     * Stocke le message dans la map, puis l'affiche si c'est la conversation en
-     * cours.
-     */
+    private void handleBroadcastMessage(String sender, String content) {
+        storeMessage("All", sender, content, false, false);
+        addMessage(sender, content);
+    }
+
+    /* ---------- Tab Management ---------- */
+    private void handleContactClick(String contactEmail) {
+        Tab contactTab = getOrCreateContactTab(contactEmail);
+        if (!conversationTabPane.getTabs().contains(contactTab)) {
+            conversationTabPane.getTabs().add(contactTab);
+        }
+        conversationTabPane.getSelectionModel().select(contactTab);
+    }
+
+    private Tab getOrCreateContactTab(String contactEmail) {
+        if (contactTabs.containsKey(contactEmail)) {
+            return contactTabs.get(contactEmail);
+        }
+        return createContactTab(contactEmail);
+    }
+
+    private Tab createContactTab(String contactEmail) {
+        Tab newTab = new Tab(contactEmail);
+        VBox conversationView = new VBox();
+        conversationView.setSpacing(5);
+    
+        // Messages area
+        ScrollPane scrollPane = new ScrollPane();
+        VBox messagesBox = new VBox(5);
+        messagesBox.setPadding(new Insets(10));
+        scrollPane.setContent(messagesBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.vvalueProperty().bind(messagesBox.heightProperty());
+        scrollPane.getStyleClass().add("messages-scroll-pane");
+        messagesBox.getStyleClass().add("messages-container");
+        VBox.setVgrow(scrollPane, javafx.scene.layout.Priority.ALWAYS);
+        
+        // Input area
+        HBox inputArea = new HBox(5);
+        inputArea.setSpacing(10);
+        inputArea.setPadding(new Insets(10));
+        inputArea.setAlignment(Pos.CENTER);
+        inputArea.getStyleClass().add("message-input-container");
+        
+        TextField messageField = new TextField();
+        messageField.setPromptText("Type message to " + contactEmail + "...");
+        messageField.setPrefWidth(400);
+        HBox.setHgrow(messageField, javafx.scene.layout.Priority.ALWAYS);
+        
+        Button sendButton = new Button("Send");
+        sendButton.getStyleClass().add("primary-button");
+        
+        EventHandler<ActionEvent> sendHandler = event -> {
+            String msg = messageField.getText().trim();
+            if (!msg.isEmpty()) {
+                sendPrivateMessage(contactEmail, msg);
+                messageField.clear();
+                messageField.requestFocus();
+            }
+        };
+
+        sendButton.setOnAction(sendHandler);
+        messageField.setOnAction(sendHandler);
+
+        inputArea.getChildren().addAll(messageField, sendButton);
+        conversationView.getChildren().addAll(scrollPane, inputArea);
+        newTab.setContent(conversationView);
+        newTab.setClosable(true);
+
+        contactTabs.put(contactEmail, newTab);
+        contactMessageContainers.put(contactEmail, messagesBox);
+        
+        newTab.setOnClosed(e -> {
+            contactTabs.remove(contactEmail);
+            contactMessageContainers.remove(contactEmail);
+        });
+
+        loadConversationHistory(contactEmail, messagesBox);
+        return newTab;
+    }
+
+    private void loadConversationHistory(String contactEmail, VBox container) {
+        List<MessageData> history = conversationMap.getOrDefault(contactEmail, new ArrayList<>());
+        for (MessageData msg : history) {
+            if (msg.isOutgoing) {
+                addOutgoingMessageToContainer(container, msg.content);
+            } else {
+                addIncomingMessageToContainer(container, msg.sender, msg.content);
+            }
+        }
+    }
+
+    private void flashContactTab(String contactEmail) {
+        Tab tab = contactTabs.get(contactEmail);
+        if (tab != null && !tab.isSelected()) {
+            tab.setStyle("-fx-background-color: #FFD700;");
+        }
+    }
+
+    /* ---------- Message Handling ---------- */
+    private void sendMessage() {
+        String messageText = messageInput.getText().trim();
+        if (messageText.isEmpty()) return;
+
+        if (messageText.startsWith("@")) {
+            handlePrivateCommand(messageText);
+        } else {
+            sendBroadcastMessage(messageText);
+        }
+        messageInput.clear();
+    }
+
+    @FXML
+public void handleSendButtonAction(ActionEvent event) {
+    sendMessage();
+}
+
+    private void handlePrivateCommand(String messageText) {
+        int spaceIndex = messageText.indexOf(" ");
+        if (spaceIndex > 1) {
+            String recipient = messageText.substring(1, spaceIndex);
+            String content = messageText.substring(spaceIndex + 1);
+            if (contacts.contains(recipient)) {
+                sendPrivateMessage(recipient, content);
+                Tab recipientTab = getOrCreateContactTab(recipient);
+                if (!conversationTabPane.getTabs().contains(recipientTab)) {
+                    conversationTabPane.getTabs().add(recipientTab);
+                }
+                conversationTabPane.getSelectionModel().select(recipientTab);
+            }
+        }
+    }
+
+    private void sendPrivateMessage(String recipient, String content) {
+        try {
+            String messageId = "msg_" + System.currentTimeMillis() + "_" + 
+                               Integer.toHexString((int)(Math.random() * 10000));
+                
+            JSONObject privateMsg = new JSONObject();
+            privateMsg.put("type", "private");
+            privateMsg.put("to", recipient);
+            privateMsg.put("content", content);
+            privateMsg.put("sender", userEmail);
+            privateMsg.put("id", messageId);
+            
+            // Use the message validator to add integrity check
+            privateMsg = com.chatapp.common.util.MessageValidator.addChecksum(privateMsg);
+            
+            out.println(privateMsg.toString());
+            
+            storeMessage(recipient, userEmail, content, true, true);
+            
+            // Add with status indicator
+            VBox container = contactMessageContainers.get(recipient);
+            if (container != null) {
+                addOutgoingMessageToContainer(container, content, messageId);
+            }
+        } catch (JSONException e) {
+            addSystemMessage("Error sending message: " + e.getMessage());
+        }
+    }
+
+    private void sendBroadcastMessage(String content) {
+        try {
+            JSONObject msg = new JSONObject();
+            msg.put("type", "broadcast");
+            msg.put("content", content);
+            msg.put("sender", userEmail);
+            out.println(msg.toString());
+            
+            storeMessage("All", userEmail, content, false, true);
+            addOutgoingMessage(content);
+        } catch (JSONException e) {
+            addSystemMessage("Error sending message: " + e.getMessage());
+        }
+    }
+
     private void storeMessage(String convKey, String sender, String content, boolean isPrivate, boolean isOutgoing) {
         conversationMap.putIfAbsent(convKey, new ArrayList<>());
         conversationMap.get(convKey).add(new MessageData(sender, content, isPrivate, isOutgoing));
-
-        // Si la conversation affichée correspond, on ajoute la bulle
-        if (convKey.equals(currentConversationKey)) {
-            Platform.runLater(() -> {
-                if (isOutgoing) {
-                    // message sortant => bulle à droite
-                    if (isPrivate) {
-                        addOutgoingPrivateMessage(convKey, content);
-                    } else {
-                        addOutgoingMessage(content);
-                    }
-                } else {
-                    // message entrant => bulle à gauche
-                    if (isPrivate) {
-                        addPrivateMessage(sender, content);
-                    } else {
-                        addMessage(sender, content);
-                    }
-                }
-            });
-        }
     }
 
-    /**
-     * Charge et affiche la conversation pour convKey (un contact ou "All").
-     */
-    private void loadConversation(String convKey) {
-        if (convKey.equals(currentConversationKey)) {
-            return; // On est déjà dessus
-        }
-        currentConversationKey = convKey;
-        messageContainer.getChildren().clear();
-
-        List<MessageData> messages = conversationMap.get(convKey);
-        if (messages != null) {
-            for (MessageData md : messages) {
-                if (md.isOutgoing) {
-                    // message émis par moi => bulle à droite
-                    if (md.isPrivate) {
-                        addOutgoingPrivateMessage(convKey, md.content);
-                    } else {
-                        addOutgoingMessage(md.content);
-                    }
-                } else {
-                    // message reçu => bulle à gauche
-                    if (md.isPrivate) {
-                        addPrivateMessage(md.sender, md.content);
-                    } else {
-                        addMessage(md.sender, md.content);
-                    }
-                }
-            }
-        }
-    }
-
-    /* ---------- Méthodes d'affichage (bulles) ---------- */
-
-    /**
-     * Affiche un message système (infos).
-     */
+    /* ---------- UI Components ---------- */
     private void addSystemMessage(String text) {
-        HBox box = new HBox();
+        HBox box = new HBox(new Label(text));
         box.setAlignment(Pos.CENTER);
-        Label label = new Label(text);
-        label.getStyleClass().add("system-message");
-        box.getChildren().add(label);
+        box.getStyleClass().add("system-message");
         messageContainer.getChildren().add(box);
-        scrollToBottom();
     }
-
-    /**
-     * Message reçu "public" => bulle à gauche.
-     */
-    private void addMessage(String sender, String text) {
-        HBox box = new HBox();
-        box.setAlignment(Pos.CENTER_LEFT);
-
-        // ex: "sara@gmail.com: Hello"
-        Label label = new Label(sender.isEmpty() ? text : sender + ": " + text);
-        label.getStyleClass().add("bubble-left");
-
-        box.getChildren().add(label);
-        messageContainer.getChildren().add(box);
-        scrollToBottom();
-    }
-
-    /**
-     * Message privé reçu => bulle à gauche (couleur différente).
-     */
-    private void addPrivateMessage(String sender, String text) {
-        HBox box = new HBox();
-        box.setAlignment(Pos.CENTER_LEFT);
-
-        Label label = new Label("[PRIVATE] " + sender + ": " + text);
-        label.getStyleClass().add("bubble-left-private");
-
-        box.getChildren().add(label);
-        messageContainer.getChildren().add(box);
-        scrollToBottom();
-    }
-
-    /**
-     * Message envoyé (public) => bulle à droite.
-     */
-    private void addOutgoingMessage(String text) {
-        HBox box = new HBox();
-        box.setAlignment(Pos.CENTER_RIGHT);
-
-        Label label = new Label("You: " + text);
-        label.getStyleClass().add("bubble-right");
-
-        box.getChildren().add(label);
-        messageContainer.getChildren().add(box);
-        scrollToBottom();
-    }
-
-    /**
-     * Message privé envoyé => bulle à droite (autre couleur).
-     */
-    private void addOutgoingPrivateMessage(String recipient, String text) {
-        HBox box = new HBox();
-        box.setAlignment(Pos.CENTER_RIGHT);
-
-        Label label = new Label("[PRIVATE to " + recipient + "] You: " + text);
-        label.getStyleClass().add("bubble-right-private");
-
-        box.getChildren().add(label);
-        messageContainer.getChildren().add(box);
-        scrollToBottom();
-    }
-
-    private void scrollToBottom() {
-        Platform.runLater(() -> {
-            messageScrollPane.layout();
-            messageScrollPane.setVvalue(1.0);
-        });
-    }
-
-    /* ---------- Gestion des contacts ---------- */
-    @FXML
-    private void handleAddContactButton(ActionEvent event) {
-        Stage addContactStage = new Stage();
-        addContactStage.setTitle("Add New Contact");
-
-        VBox vbox = new VBox(10);
-        vbox.setPadding(new Insets(10));
-
-        Label instructionLabel = new Label("Enter the email address of the contact:");
-        TextField contactField = new TextField();
-        contactField.setPromptText("Email address");
-
-        Button okButton = new Button("OK");
-        okButton.setOnAction(e -> {
-            String newContact = contactField.getText().trim();
-            if (!newContact.isEmpty()) {
-                addContact(newContact);
+    private void handleIncomingMessage(String message) {
+        try {
+            JSONObject msgJson = new JSONObject(message);
+            String type = msgJson.getString("type");
+            
+            if ("delivery_receipt".equals(type)) {
+                handleDeliveryReceipt(msgJson);
+                return;
             }
-            addContactStage.close();
-        });
-
-        vbox.getChildren().addAll(instructionLabel, contactField, okButton);
-        Scene scene = new Scene(vbox);
-        addContactStage.setScene(scene);
-        addContactStage.show();
+            
+            if ("read_receipt".equals(type)) {
+                handleReadReceipt(msgJson);
+                return;
+            }
+            
+            if ("private".equals(type)) {
+                String content = msgJson.getString("content");
+                String sender = msgJson.optString("sender", "Server");
+                
+                // Send read receipt
+                sendReadReceipt(msgJson.getString("id"), sender);
+                
+                handlePrivateMessage(sender, content);
+            } else if ("broadcast".equals(type)) {
+                String content = msgJson.getString("content");
+                String sender = msgJson.optString("sender", "Server");
+                handleBroadcastMessage(sender, content);
+            } else if ("system".equals(type)) {
+                String content = msgJson.getString("content");
+                addSystemMessage(content);
+            }
+        } catch (JSONException e) {
+            addSystemMessage("Invalid message format: " + message);
+        }
     }
-
-    private void addContact(String contact) {
-        if (!contacts.contains(contact)) {
-            contacts.add(contact);
-            saveContacts();
-            refreshContactsList();
-            addSystemMessage(contact + " added to contacts.");
-        } else {
-            addSystemMessage(contact + " is already in your contacts.");
+    
+    // Add method to handle delivery receipts
+    private void handleDeliveryReceipt(JSONObject receipt) {
+        try {
+            String messageId = receipt.getString("messageId");
+            String status = receipt.getString("status");
+            
+            // Update UI to show message status
+            Platform.runLater(() -> {
+                updateMessageStatus(messageId, status);
+            });
+            
+            // Remove from retry cache if delivered
+            if ("delivered".equals(status) && networkService != null) {
+                networkService.processDeliveryReceipt(messageId);
+            }
+        } catch (JSONException e) {
+            System.err.println("Error processing delivery receipt: " + e.getMessage());
+        }
+    }
+    
+    // Add method to handle read receipts
+    private void handleReadReceipt(JSONObject receipt) {
+        try {
+            String messageId = receipt.getString("messageId");
+            String reader = receipt.getString("reader");
+            
+            Platform.runLater(() -> {
+                updateMessageStatus(messageId, "read");
+            });
+        } catch (JSONException e) {
+            System.err.println("Error processing read receipt: " + e.getMessage());
+        }
+    }
+    
+    // Add method to send read receipts
+    private void sendReadReceipt(String messageId, String sender) {
+        try {
+            JSONObject readReceipt = new JSONObject();
+            readReceipt.put("type", "read_receipt");
+            readReceipt.put("messageId", messageId);
+            readReceipt.put("sender", sender);
+            out.println(readReceipt.toString());
+        } catch (JSONException e) {
+            System.err.println("Error sending read receipt: " + e.getMessage());
+        }
+    }
+    private void addOutgoingMessageToContainer(VBox container, String text, String messageId) {
+        VBox messageBox = new VBox(3);
+        messageBox.setAlignment(Pos.CENTER_RIGHT);
+        
+        Label messageLabel = new Label("You: " + text);
+        messageLabel.getStyleClass().add("bubble-right");
+        messageLabel.setWrapText(true);
+        messageLabel.setMaxWidth(300);
+        
+        Label statusLabel = new Label("Sending...");
+        statusLabel.setId("status-" + messageId);
+        statusLabel.getStyleClass().add("message-status");
+        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #888888;");
+        
+        messageBox.getChildren().addAll(messageLabel, statusLabel);
+        
+        HBox wrapper = new HBox(messageBox);
+        wrapper.setAlignment(Pos.CENTER_RIGHT);
+        wrapper.setPadding(new Insets(5, 10, 5, 10));
+        
+        container.getChildren().add(wrapper);
+    }
+    public void updateMessageStatus(String messageId, String status) {
+        // Find all status labels matching this message ID
+        for (VBox container : contactMessageContainers.values()) {
+            Label statusLabel = (Label) container.lookup("#status-" + messageId);
+            if (statusLabel != null) {
+                switch (status) {
+                    case "delivered":
+                        statusLabel.setText("✓ Delivered");
+                        break;
+                    case "read":
+                        statusLabel.setText("✓✓ Read");
+                        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #4fc3f7;"); // Blue color
+                        break;
+                    case "failed":
+                        statusLabel.setText("❌ Failed");
+                        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #e57373;"); // Red color
+                        break;
+                    case "pending":
+                        statusLabel.setText("⏱ Pending");
+                        break;
+                    default:
+                        statusLabel.setText(status);
+                }
+            }
         }
     }
 
-    @FXML
-    private void handleDeleteContactButton(ActionEvent event) {
-        if (contacts.isEmpty()) {
-            addSystemMessage("No contacts to delete.");
-            return;
-        }
-        Stage deleteStage = new Stage();
-        deleteStage.setTitle("Delete Contact");
-
-        VBox vbox = new VBox(10);
-        vbox.setPadding(new Insets(10));
-
-        Label instructionLabel = new Label("Select the contact to delete:");
-        ComboBox<String> contactComboBox = new ComboBox<>();
-        List<String> sortedContacts = new ArrayList<>(contacts);
-        Collections.sort(sortedContacts);
-        contactComboBox.getItems().addAll(sortedContacts);
-        contactComboBox.setPromptText("Select contact");
-
-        Button okButton = new Button("OK");
-        okButton.setOnAction(e -> {
-            String selectedContact = contactComboBox.getSelectionModel().getSelectedItem();
-            if (selectedContact != null && !selectedContact.isEmpty()) {
-                contacts.remove(selectedContact);
-                conversationMap.remove(selectedContact);
-                saveContacts();
-                refreshContactsList();
-                addSystemMessage(selectedContact + " deleted from contacts.");
-            }
-            deleteStage.close();
-        });
-
-        vbox.getChildren().addAll(instructionLabel, contactComboBox, okButton);
-        Scene scene = new Scene(vbox);
-        deleteStage.setScene(scene);
-        deleteStage.show();
+    private void addIncomingMessageToContainer(VBox container, String sender, String text) {
+        HBox box = new HBox(new Label(sender + ": " + text));
+        box.setAlignment(Pos.CENTER_LEFT);
+        box.getStyleClass().add("bubble-left");
+        container.getChildren().add(box);
     }
 
-    @FXML
-    private void handleShowContactsButton(ActionEvent event) {
-        Stage showContactsStage = new Stage();
-        showContactsStage.setTitle("Your Contacts");
+    private void addMessage(String sender, String content) {
+        HBox box = new HBox(new Label(sender + ": " + content));
+        box.setAlignment(Pos.CENTER_LEFT);
+        box.getStyleClass().add("bubble-left");
+        messageContainer.getChildren().add(box);
+    }
 
-        VBox vbox = new VBox(10);
-        vbox.setPadding(new Insets(10));
-
-        Label label = new Label("Your contacts:");
-        ListView<String> listView = new ListView<>();
-
-        List<String> sortedList = new ArrayList<>(contacts);
-        Collections.sort(sortedList);
-        listView.getItems().setAll(sortedList);
-
-        vbox.getChildren().addAll(label, listView);
-        Scene scene = new Scene(vbox, 300, 400);
-        showContactsStage.setScene(scene);
-        showContactsStage.show();
+    private void addOutgoingMessage(String content) {
+        HBox box = new HBox(new Label("You: " + content));
+        box.setAlignment(Pos.CENTER_RIGHT);
+        box.getStyleClass().add("bubble-right");
+        messageContainer.getChildren().add(box);
     }
 
     /* ---------- Persistance des contacts ---------- */
@@ -522,4 +556,67 @@ public class ChatController {
     private void refreshContactsList() {
         contactsList.getItems().setAll(contacts);
     }
+
+
+    @FXML
+    public void handleAddContactButton(ActionEvent event) {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Add Contact");
+        dialog.setHeaderText("Enter the email address of the contact to add:");
+        dialog.setContentText("Email:");
+
+        Optional<String> result = dialog.showAndWait();
+        result.ifPresent(email -> {
+            if (email.contains("@") && !email.equals(userEmail)) {
+                contacts.add(email);
+                saveContacts();
+                refreshContactsList();
+                addSystemMessage("Contact added: " + email);
+            } else {
+                addSystemMessage("Invalid email address");
+            }
+        });
+    }
+
+    /**
+     * Handler for the Show Contacts button
+     */
+    @FXML
+    public void handleShowContactsButton(ActionEvent event) {
+        List<String> sortedContacts = new ArrayList<>(contacts);
+        Collections.sort(sortedContacts);
+        contactsList.getItems().setAll(sortedContacts);
+    }
+
+   
+    
+    private void launchChatUI(String email, Socket socket, BufferedReader in, PrintWriter out) throws IOException {
+        // This method shouldn't be in ChatController at all
+        throw new UnsupportedOperationException("This method should not be called from ChatController");
+    }
+
+
+    /**
+     * Handler for the Delete Contact button
+     */
+    @FXML
+public void handleDeleteContactButton(ActionEvent event) {
+    String selectedContact = contactsList.getSelectionModel().getSelectedItem();
+    if (selectedContact != null) {
+        contacts.remove(selectedContact);
+        
+        // Remove any open tab for this contact
+        Tab tab = contactTabs.remove(selectedContact);
+        if (tab != null) {
+            conversationTabPane.getTabs().remove(tab);
+        }
+        contactMessageContainers.remove(selectedContact);
+        
+        saveContacts();
+        refreshContactsList();
+        addSystemMessage("Contact removed: " + selectedContact);
+    } else {
+        addSystemMessage("No contact selected");
+    }
+}
 }

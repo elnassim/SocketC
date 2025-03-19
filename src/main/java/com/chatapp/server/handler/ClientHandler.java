@@ -82,32 +82,86 @@ public class ClientHandler implements Runnable {
     }
 
     private void handleChat() {
+        // First, deliver any offline messages waiting for this user
+        sendOfflineMessages();
+        
         try {
             String input;
             while ((input = in.readLine()) != null) {
                 try {
                     JSONObject messageJson = new JSONObject(input);
                     String messageType = messageJson.getString("type");
-
+                    
                     if ("private".equals(messageType)) {
                         String recipient = messageJson.getString("to");
                         String content = messageJson.getString("content");
-
+                        
+                        // Generate message ID and conversation ID
+                        String conversationId = messageService.generateConversationId(userEmail, recipient);
+                        String messageId = "msg_" + System.currentTimeMillis() + "_" + 
+                                          Integer.toHexString((int)(Math.random() * 10000));
+                        
+                        // Create a proper message object for routing
+                        JSONObject routingMessage = new JSONObject();
+                        routingMessage.put("id", messageId);
+                        routingMessage.put("type", "private");
+                        routingMessage.put("sender", userEmail);
+                        routingMessage.put("content", content);
+                        routingMessage.put("conversationId", conversationId);
+                        routingMessage.put("timestamp", System.currentTimeMillis());
+                        routingMessage.put("delivered", false);
+                        routingMessage.put("read", false);
+                        
                         // Find recipient in clients list
                         ClientHandler recipientHandler = findClientByEmail(recipient);
                         if (recipientHandler != null) {
-                            // Send private message
-                            String formattedMessage = userEmail + " (private): " + content;
-                            recipientHandler.sendMessage(formattedMessage);
-                            // Also send confirmation to sender
-                            sendMessage("Message sent to " + recipient);
+                            recipientHandler.sendMessage(routingMessage.toString());
+                            
+                            // Send delivery receipt
+                            JSONObject deliveryReceipt = new JSONObject();
+                            deliveryReceipt.put("type", "delivery_receipt");
+                            deliveryReceipt.put("messageId", messageId);
+                            deliveryReceipt.put("status", "delivered");
+                            sendMessage(deliveryReceipt.toString());
                         } else {
-                            sendMessage("User " + recipient + " is not online.");
+                            // Store for offline delivery
+                            messageService.storeOfflineMessage(recipient, routingMessage);
+                            
+                            // Send pending status
+                            JSONObject pendingReceipt = new JSONObject();
+                            pendingReceipt.put("type", "delivery_receipt");
+                            pendingReceipt.put("messageId", messageId);
+                            pendingReceipt.put("status", "pending");
+                            sendMessage(pendingReceipt.toString());
                         }
-                    } else if ("broadcast".equals(messageType)) {
+                    } 
+                    else if ("broadcast".equals(messageType)) {
                         String content = messageJson.getString("content");
-                        String formattedMessage = userEmail + ": " + content;
-                        broadcastMessage(formattedMessage);
+                        
+                        // Create enhanced broadcast message
+                        JSONObject broadcastMsg = messageService.createBroadcastMessage(userEmail, content);
+                        broadcastMessage(broadcastMsg.toString());
+                    }
+                    else if ("read_receipt".equals(messageType)) {
+                        String messageId = messageJson.getString("messageId");
+                        String sender = messageJson.getString("sender");
+                        
+                        // Find original sender and forward the read receipt
+                        ClientHandler senderHandler = findClientByEmail(sender);
+                        if (senderHandler != null) {
+                            JSONObject readReceipt = new JSONObject();
+                            readReceipt.put("type", "read_receipt");
+                            readReceipt.put("messageId", messageId);
+                            readReceipt.put("reader", userEmail);
+                            readReceipt.put("timestamp", System.currentTimeMillis());
+                            
+                            senderHandler.sendMessage(readReceipt.toString());
+                        }
+                    }
+                    else if ("disconnect".equals(messageType)) {
+                        // Handle proper disconnection
+                        System.out.println("Client " + userEmail + " disconnecting...");
+                        break;
                     }
                 } catch (JSONException e) {
                     // If not JSON, treat as legacy plain text message
@@ -119,6 +173,26 @@ public class ClientHandler implements Runnable {
         } catch (IOException e) {
             System.err.println("Client disconnected during chat: " + clientSocket.getInetAddress());
         }
+    }
+
+    private void sendOfflineMessages() {
+        List<String> pendingMessages = messageService.getOfflineMessages(userEmail);
+        if (!pendingMessages.isEmpty()) {
+            System.out.println("Delivering " + pendingMessages.size() + " offline messages to " + userEmail);
+            for (String messageJson : pendingMessages) {
+                sendMessage(messageJson);
+            }
+            
+            // Send a system notification about offline messages
+            JSONObject notification = new JSONObject();
+            notification.put("type", "system");
+            notification.put("content", "You received " + pendingMessages.size() + 
+                            " message(s) while you were offline");
+            sendMessage(notification.toString());
+        }
+    }
+    public String getUserEmail() {
+        return userEmail;
     }
 
     // Find a client by email

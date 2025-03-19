@@ -4,6 +4,10 @@ import java.io.*;
 import java.net.Socket;
 import java.net.ConnectException;
 import java.util.HashSet;
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.json.JSONObject;
 import org.json.JSONException;
@@ -18,6 +22,11 @@ public class ClientNetworkService {
     private static HashSet<String> contacts = new HashSet<>();
     private static String userEmail;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
+    private MessageCache messageCache;
+private ScheduledExecutorService retryService;
+private boolean connected = false;
+private static final int MAX_RETRY_ATTEMPTS = 5;
+private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
 
     private Socket socket;
     private PrintWriter out;
@@ -52,6 +61,39 @@ public class ClientNetworkService {
         }
     }
 
+    public void initRetryMechanism() {
+    if (userEmail == null) {
+        throw new IllegalStateException("User email not set. Connect first.");
+    }
+    
+    messageCache = new MessageCache(userEmail);
+    retryService = Executors.newSingleThreadScheduledExecutor();
+    connected = true;
+    
+    // Schedule retry task
+    retryService.scheduleAtFixedRate(() -> {
+        if (connected && socket != null && !socket.isClosed()) {
+            List<JSONObject> pendingMessages = messageCache.getPendingMessages();
+            for (JSONObject message : pendingMessages) {
+                // Check if retry count exceeded
+                int retryCount = message.optInt("retry_count", 0);
+                if (retryCount < MAX_RETRY_ATTEMPTS) {
+                    message.put("retry_count", retryCount + 1);
+                    sendMessage(message.toString());
+                } else {
+                    // Max retries reached, notify UI of failure
+                    JSONObject failureNotification = new JSONObject();
+                    failureNotification.put("type", "send_failure");
+                    failureNotification.put("originalMessage", message);
+                    // This will be handled by the message listener in ChatController
+                    sendMessage(failureNotification.toString());
+                    messageCache.removeDeliveredMessage(message.getString("id"));
+                }
+            }
+        }
+    }, RETRY_INTERVAL_MS, RETRY_INTERVAL_MS, TimeUnit.MILLISECONDS);
+}
+
     /**
      * Send a message to the server
      * 
@@ -67,7 +109,12 @@ public class ClientNetworkService {
      * Close the connection to the server
      */
     public void disconnect() {
+        connected = false;
         try {
+            if (retryService != null) {
+                retryService.shutdown();
+            }
+            
             if (socket != null && !socket.isClosed()) {
                 JSONObject disconnectMsg = new JSONObject();
                 disconnectMsg.put("type", "disconnect");
@@ -77,6 +124,25 @@ public class ClientNetworkService {
         } catch (Exception e) {
             System.err.println("Error while disconnecting: " + e.getMessage());
         }
+    }
+
+    public void sendMessageWithRetry(JSONObject message) {
+        // Add ID if not present
+        if (!message.has("id")) {
+            message.put("id", "msg_" + System.currentTimeMillis() + "_" + 
+                      Integer.toHexString((int)(Math.random() * 10000)));
+        }
+        
+        // Add message to cache
+        messageCache.cacheMessage(message);
+        
+        // Send message
+        sendMessage(message.toString());
+    }
+    
+    // Add this to process delivery receipts
+    public void processDeliveryReceipt(String messageId) {
+        messageCache.removeDeliveredMessage(messageId);
     }
 
     /**

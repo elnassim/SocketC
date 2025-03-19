@@ -1,6 +1,8 @@
 package com.chatapp.server.service;
 
 import org.json.JSONObject;
+import com.chatapp.common.model.Message;
+
 import java.util.*;
 import java.io.*;
 
@@ -10,9 +12,27 @@ import java.io.*;
 public class MessageService {
 
     private Map<String, List<String>> messageHistory = new HashMap<>();
+    private Map<String, List<String>> offlineMessages = new HashMap<>();
 
     /**
-     * Create a private message JSON object
+     * Generate a unique conversation ID for two users
+     * 
+     * @param user1 First user's email
+     * @param user2 Second user's email
+     * @return A unique conversation ID
+     */
+    public String generateConversationId(String user1, String user2) {
+        // Sort emails to ensure the same ID regardless of sender/receiver order
+        if (user1.compareTo(user2) > 0) {
+            String temp = user1;
+            user1 = user2;
+            user2 = temp;
+        }
+        return user1 + "_" + user2;
+    }
+
+    /**
+     * Create a private message JSON object with routing information
      * 
      * @param sender    Sender's email
      * @param recipient Recipient's email
@@ -20,17 +40,13 @@ public class MessageService {
      * @return JSON object representing a private message
      */
     public JSONObject createPrivateMessage(String sender, String recipient, String content) {
-        JSONObject message = new JSONObject();
-        message.put("type", "private");
-        message.put("sender", sender);
-        message.put("to", recipient);
-        message.put("content", content);
-        message.put("timestamp", System.currentTimeMillis());
-
+        Message message = new Message(sender, content, "private");
+        message.setConversationParticipants(sender, recipient);
+        
         // Store in history
         storeMessage(sender, recipient, content);
-
-        return message;
+        
+        return message.toJson();
     }
 
     /**
@@ -41,16 +57,39 @@ public class MessageService {
      * @return JSON object representing a broadcast message
      */
     public JSONObject createBroadcastMessage(String sender, String content) {
-        JSONObject message = new JSONObject();
-        message.put("type", "broadcast");
-        message.put("sender", sender);
-        message.put("content", content);
-        message.put("timestamp", System.currentTimeMillis());
-
+        Message message = new Message(sender, content, "broadcast");
+        message.setConversationId("broadcast");
+        
         // Store in history
         storeMessage(sender, "broadcast", content);
+        
+        return message.toJson();
+    }
 
-        return message;
+    /**
+     * Store a message for offline delivery
+     * 
+     * @param recipient The recipient's email
+     * @param message The JSON message to store
+     */
+    public void storeOfflineMessage(String recipient, JSONObject message) {
+        // Initialize the offline messages map for this recipient if needed
+        offlineMessages.computeIfAbsent(recipient, k -> new ArrayList<>());
+        
+        // Add the message to the recipient's queue
+        offlineMessages.get(recipient).add(message.toString());
+    }
+
+    /**
+     * Get and remove all offline messages for a user
+     * 
+     * @param userEmail The user's email
+     * @return A list of stored messages
+     */
+    public List<String> getOfflineMessages(String userEmail) {
+        List<String> messages = offlineMessages.getOrDefault(userEmail, new ArrayList<>());
+        offlineMessages.remove(userEmail);
+        return messages;
     }
 
     /**
@@ -61,19 +100,37 @@ public class MessageService {
      * @param content   Message content
      */
     private void storeMessage(String sender, String recipient, String content) {
-        String key = sender + "-" + recipient;
-        if (!messageHistory.containsKey(key)) {
-            messageHistory.put(key, new ArrayList<>());
+        String conversationId = generateConversationId(sender, recipient);
+        
+        if (!messageHistory.containsKey(conversationId)) {
+            messageHistory.put(conversationId, new ArrayList<>());
         }
-        messageHistory.get(key).add(content);
+        
+        // Create a simple JSON representation for storage
+        JSONObject storedMessage = new JSONObject();
+        storedMessage.put("sender", sender);
+        storedMessage.put("content", content);
+        storedMessage.put("timestamp", System.currentTimeMillis());
+        
+        messageHistory.get(conversationId).add(storedMessage.toString());
 
         // If we want to maintain size limit
-        List<String> messages = messageHistory.get(key);
+        List<String> messages = messageHistory.get(conversationId);
         if (messages.size() > 100) {
             messages.remove(0); // Remove oldest message if we have more than 100
         }
     }
 
+    /**
+     * Get message history by conversation ID
+     * 
+     * @param conversationId The conversation ID
+     * @return List of messages in this conversation
+     */
+    public List<String> getMessageHistoryByConversation(String conversationId) {
+        return messageHistory.getOrDefault(conversationId, new ArrayList<>());
+    }
+    
     /**
      * Get message history between users
      * 
@@ -82,17 +139,7 @@ public class MessageService {
      * @return List of messages between the users
      */
     public List<String> getMessageHistory(String user1, String user2) {
-        String key1 = user1 + "-" + user2;
-        String key2 = user2 + "-" + user1;
-
-        List<String> result = new ArrayList<>();
-        if (messageHistory.containsKey(key1)) {
-            result.addAll(messageHistory.get(key1));
-        }
-        if (messageHistory.containsKey(key2)) {
-            result.addAll(messageHistory.get(key2));
-        }
-
-        return result;
+        String conversationId = generateConversationId(user1, user2);
+        return messageHistory.getOrDefault(conversationId, new ArrayList<>());
     }
 }
