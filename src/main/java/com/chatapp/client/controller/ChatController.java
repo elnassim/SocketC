@@ -3,7 +3,9 @@ package com.chatapp.client.controller;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
@@ -48,6 +50,8 @@ public class ChatController {
     private Button deleteContactButton;
     @FXML
     private Label contactNameLabel;
+    @FXML
+    private Button logoutButton;
 
     /* ---------- Champs internes ---------- */
     private String userEmail; // e-mail de l'utilisateur local
@@ -521,5 +525,27 @@ public class ChatController {
 
     private void refreshContactsList() {
         contactsList.getItems().setAll(contacts);
+    }
+        @FXML
+    public void handleLogoutButtonAction(ActionEvent event) throws IOException {
+        // Close the socket connection
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
+
+        // Load the login view
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/login-view.fxml"));
+        Parent loginView = loader.load();
+
+        // Create new scene with the login view
+        Scene loginScene = new Scene(loginView);
+
+        // Get the current stage
+        Stage stage = (Stage) logoutButton.getScene().getWindow();
+
+        // Set the new scene
+        stage.setTitle("Chat Application - Login");
+        stage.setScene(loginScene);
+        stage.show();
     }
 }
