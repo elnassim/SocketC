@@ -176,3 +176,9 @@
   -fx-padding: 10;
   -fx-background-color: #ededed;
 }
+.primary-button {
+  -fx-background-color: #00a884;
+  -fx-text-fill: white;
+  -fx-font-weight: bold;
+  -fx-background-radius: 5;
+}
