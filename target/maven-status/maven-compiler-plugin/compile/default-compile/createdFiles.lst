@@ -1,4 +1,6 @@
+com\chatapp\common\model\Message$Status.class
 com\chatapp\client\controller\SignupController.class
+com\chatapp\server\service\ConversationService.class
 com\chatapp\server\service\UserService.class
 com\chatapp\client\controller\ChatController.class
 com\chatapp\common\util\MessageValidator.class

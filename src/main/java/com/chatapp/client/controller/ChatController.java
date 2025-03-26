@@ -11,6 +11,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
+
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -138,6 +140,17 @@ public class ChatController {
             }
         }).start();
     }
+    private void requestConversationHistory(String contactEmail) {
+        try {
+            System.out.println("Requesting history for: " + contactEmail);
+            JSONObject request = new JSONObject();
+            request.put("type", "GET_HISTORY");
+            request.put("otherUser", contactEmail);
+            out.println(request.toString());
+        } catch (JSONException e) {
+            addSystemMessage("Error requesting chat history: " + e.getMessage());
+        }
+    }
 
     private void addOutgoingMessageToContainer(VBox container, String text) {
         HBox box = new HBox();
@@ -262,14 +275,34 @@ public class ChatController {
     }
 
     private void loadConversationHistory(String contactEmail, VBox container) {
-        List<MessageData> history = conversationMap.getOrDefault(contactEmail, new ArrayList<>());
-        for (MessageData msg : history) {
+        // First see if we have local cache
+        List<MessageData> localHistory = conversationMap.getOrDefault(contactEmail, new ArrayList<>());
+        
+        // Add loading indicator
+        Label loadingLabel = new Label("Loading conversation history...");
+        loadingLabel.setStyle("-fx-text-fill: #757575; -fx-font-style: italic;");
+        container.getChildren().add(loadingLabel);
+        
+        // Display any local cache we have for immediate feedback
+        for (MessageData msg : localHistory) {
             if (msg.isOutgoing) {
                 addOutgoingMessageToContainer(container, msg.content);
             } else {
                 addIncomingMessageToContainer(container, msg.sender, msg.content);
             }
         }
+        
+        // Ensure we're requesting with a short delay to allow connection to stabilize
+        new Thread(() -> {
+            try {
+                // Short delay to ensure connection is fully established
+                Thread.sleep(500);
+                // Request server-side history
+                Platform.runLater(() -> requestConversationHistory(contactEmail));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     private void flashContactTab(String contactEmail) {
@@ -400,11 +433,140 @@ public void handleSendButtonAction(ActionEvent event) {
                 String content = msgJson.getString("content");
                 addSystemMessage(content);
             }
+            else if ("HISTORY_RESPONSE".equals(type)) {
+                handleHistoryResponse(msgJson);
+            }
         } catch (JSONException e) {
             addSystemMessage("Invalid message format: " + message);
         }
     }
+    private void handleHistoryResponse(JSONObject response) {
+        try {
+            if (!response.has("messages")) {
+                System.err.println("Invalid history response: missing messages array");
+                Platform.runLater(() -> addSystemMessage("Error: Could not load conversation history"));
+                return;
+            }
+            
+            JSONArray messagesArray = response.getJSONArray("messages");
+            System.out.println("Received history with " + messagesArray.length() + " messages");
+            
+            if (messagesArray.length() == 0) {
+                System.out.println("No history messages found");
+                // Remove loading indicators
+                Platform.runLater(() -> {
+                    for (VBox container : contactMessageContainers.values()) {
+                        container.getChildren().removeIf(node -> 
+                            node instanceof Label && 
+                            ((Label)node).getText().equals("Loading conversation history..."));
+                    }
+                });
+                return;
+            }
     
+            // Group messages by conversation
+            Map<String, List<JSONObject>> conversationMessages = new HashMap<>();
+            
+            // First pass: categorize messages by conversation partner
+            for (int i = 0; i < messagesArray.length(); i++) {
+                JSONObject messageJson = messagesArray.getJSONObject(i);
+                
+                // Skip if missing required fields
+                if (!messageJson.has("sender") || !messageJson.has("content") || 
+                    !messageJson.has("type") || !messageJson.has("conversationId")) {
+                    continue;
+                }
+                
+                String sender = messageJson.getString("sender");
+                String conversationId = messageJson.getString("conversationId");
+                
+                // Determine conversation partner
+                String partner;
+                if (sender.equals(userEmail)) {
+                    // This is our own message - extract recipient from conversation ID
+                    if (conversationId.startsWith(userEmail + "_")) {
+                        partner = conversationId.substring((userEmail + "_").length());
+                    } else if (conversationId.endsWith("_" + userEmail)) {
+                        partner = conversationId.substring(0, conversationId.length() - (userEmail.length() + 1));
+                    } else if (conversationId.equals("broadcast")) {
+                        partner = "All";
+                    } else {
+                        // Default to using the first part of conversation ID
+                        String[] parts = conversationId.split("_");
+                        partner = parts[0].equals(userEmail) ? parts[1] : parts[0];
+                    }
+                } else {
+                    // Message from someone else
+                    partner = sender;
+                }
+                
+                // Add to appropriate conversation group
+                if (!conversationMessages.containsKey(partner)) {
+                    conversationMessages.put(partner, new ArrayList<>());
+                }
+                conversationMessages.get(partner).add(messageJson);
+            }
+            
+            // Second pass: display messages by conversation partner
+            for (Map.Entry<String, List<JSONObject>> entry : conversationMessages.entrySet()) {
+                String partner = entry.getKey();
+                List<JSONObject> messages = entry.getValue();
+                
+                // Important: need final variable for lambda
+                final String contactEmail = partner;
+                
+                Platform.runLater(() -> {
+                    // Get or create the container for this conversation
+                    VBox container;
+                    
+                    if (!contactMessageContainers.containsKey(contactEmail)) {
+                        // Need to create a tab for this contact first
+                        Tab newTab = createContactTab(contactEmail);
+                        container = contactMessageContainers.get(contactEmail);
+                        
+                        // Add contact to list if not already there
+                        if (!contacts.contains(contactEmail) && !contactEmail.equals("All")) {
+                            contacts.add(contactEmail);
+                            saveContacts();
+                            refreshContactsList();
+                        }
+                    } else {
+                        container = contactMessageContainers.get(contactEmail);
+                        
+                        // Remove loading indicator if present
+                        container.getChildren().removeIf(node -> 
+                            node instanceof Label && 
+                            ((Label)node).getText().equals("Loading conversation history..."));
+                    }
+                    
+                    // Display messages in this conversation
+                    if (container != null) {
+                        for (JSONObject messageJson : messages) {
+                            try {
+                                String sender = messageJson.getString("sender");
+                                String content = messageJson.getString("content");
+                                
+                                if (sender.equals(userEmail)) {
+                                    // Our own message
+                                    addOutgoingMessageToContainer(container, content);
+                                } else {
+                                    // Message from partner
+                                    addIncomingMessageToContainer(container, sender, content);
+                                }
+                            } catch (JSONException e) {
+                                System.err.println("Error displaying message: " + e.getMessage());
+                            }
+                        }
+                    }
+                });
+            }
+            
+        } catch (JSONException e) {
+            System.err.println("Error processing history: " + e.getMessage());
+            e.printStackTrace();
+            Platform.runLater(() -> addSystemMessage("Error processing chat history"));
+        }
+    }
     // Add method to handle delivery receipts
     private void handleDeliveryReceipt(JSONObject receipt) {
         try {

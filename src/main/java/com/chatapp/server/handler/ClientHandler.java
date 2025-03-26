@@ -92,25 +92,24 @@ public class ClientHandler implements Runnable {
                     JSONObject messageJson = new JSONObject(input);
                     String messageType = messageJson.getString("type");
                     
+                    // Handle history requests
+                    if ("GET_HISTORY".equals(messageType)) {
+                        handleHistoryRequest(messageJson);
+                        continue; // Skip other processing for history requests
+                    }
+                    
+                    // Handle private messages
                     if ("private".equals(messageType)) {
                         String recipient = messageJson.getString("to");
                         String content = messageJson.getString("content");
                         
-                        // Generate message ID and conversation ID
-                        String conversationId = messageService.generateConversationId(userEmail, recipient);
-                        String messageId = "msg_" + System.currentTimeMillis() + "_" + 
-                                          Integer.toHexString((int)(Math.random() * 10000));
+                        // Use MessageService to create and save the message
+                        // This will automatically save it to conversation history
+                        JSONObject routingMessage = messageService.createPrivateMessage(
+                            userEmail, recipient, content);
                         
-                        // Create a proper message object for routing
-                        JSONObject routingMessage = new JSONObject();
-                        routingMessage.put("id", messageId);
-                        routingMessage.put("type", "private");
-                        routingMessage.put("sender", userEmail);
-                        routingMessage.put("content", content);
-                        routingMessage.put("conversationId", conversationId);
-                        routingMessage.put("timestamp", System.currentTimeMillis());
-                        routingMessage.put("delivered", false);
-                        routingMessage.put("read", false);
+                        // Get the message ID
+                        String messageId = routingMessage.getString("id");
                         
                         // Find recipient in clients list
                         ClientHandler recipientHandler = findClientByEmail(recipient);
@@ -138,7 +137,7 @@ public class ClientHandler implements Runnable {
                     else if ("broadcast".equals(messageType)) {
                         String content = messageJson.getString("content");
                         
-                        // Create enhanced broadcast message
+                        // Create enhanced broadcast message - this saves to history
                         JSONObject broadcastMsg = messageService.createBroadcastMessage(userEmail, content);
                         broadcastMessage(broadcastMsg.toString());
                     }
@@ -163,6 +162,7 @@ public class ClientHandler implements Runnable {
                         System.out.println("Client " + userEmail + " disconnecting...");
                         break;
                     }
+                    
                 } catch (JSONException e) {
                     // If not JSON, treat as legacy plain text message
                     System.out.println("Received non-JSON message: " + input);
@@ -175,6 +175,32 @@ public class ClientHandler implements Runnable {
         }
     }
 
+
+    private void handleHistoryRequest(JSONObject request) {
+        try {
+            String otherUser = request.getString("otherUser");
+            System.out.println("History request received from " + userEmail + " for conversation with " + otherUser);
+            
+            List<JSONObject> history = messageService.getMessageHistory(userEmail, otherUser);
+            System.out.println("Found " + history.size() + " messages in history");
+            
+            // Create history response
+            JSONObject response = new JSONObject();
+            response.put("type", "HISTORY_RESPONSE");
+            
+            JSONArray messagesArray = new JSONArray();
+            for (JSONObject message : history) {
+                messagesArray.put(message);
+            }
+            
+            response.put("messages", messagesArray);
+            sendMessage(response.toString());
+            System.out.println("Sent history response with " + messagesArray.length() + " messages to " + userEmail);
+        } catch (JSONException e) {
+            System.err.println("Error processing history request: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
     private void sendOfflineMessages() {
         List<String> pendingMessages = messageService.getOfflineMessages(userEmail);
         if (!pendingMessages.isEmpty()) {
