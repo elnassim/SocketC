@@ -1,10 +1,14 @@
 com\chatapp\client\controller\SignupController.class
 com\chatapp\server\service\UserService.class
 com\chatapp\client\controller\ChatController.class
+com\chatapp\common\model\Group.class
 com\chatapp\common\util\MessageValidator.class
 com\chatapp\client\network\MessageCache.class
 com\chatapp\client\controller\LoginController.class
+com\chatapp\server\service\GroupService.class
 com\chatapp\client\network\ClientNetworkService.class
+com\chatapp\client\controller\CheckBoxListCell.class
+com\chatapp\client\controller\CreateGroupController.class
 com\chatapp\server\handler\ClientHandler.class
 com\chatapp\data\repository\UserRepository.class
 com\chatapp\server\service\MessageService.class

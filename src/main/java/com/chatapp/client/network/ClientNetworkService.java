@@ -3,12 +3,14 @@ package com.chatapp.client.network;
 import java.io.*;
 import java.net.Socket;
 import java.net.ConnectException;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONException;
 
@@ -23,10 +25,10 @@ public class ClientNetworkService {
     private static String userEmail;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
     private MessageCache messageCache;
-private ScheduledExecutorService retryService;
-private boolean connected = false;
-private static final int MAX_RETRY_ATTEMPTS = 5;
-private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
+    private ScheduledExecutorService retryService;
+    private boolean connected = false;
+    private static final int MAX_RETRY_ATTEMPTS = 5;
+    private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
 
     private Socket socket;
     private PrintWriter out;
@@ -60,39 +62,39 @@ private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
             throw new IOException("Failed to connect to server. Is the server running?");
         }
     }
-
+    
     public void initRetryMechanism() {
-    if (userEmail == null) {
-        throw new IllegalStateException("User email not set. Connect first.");
-    }
-    
-    messageCache = new MessageCache(userEmail);
-    retryService = Executors.newSingleThreadScheduledExecutor();
-    connected = true;
-    
-    // Schedule retry task
-    retryService.scheduleAtFixedRate(() -> {
-        if (connected && socket != null && !socket.isClosed()) {
-            List<JSONObject> pendingMessages = messageCache.getPendingMessages();
-            for (JSONObject message : pendingMessages) {
-                // Check if retry count exceeded
-                int retryCount = message.optInt("retry_count", 0);
-                if (retryCount < MAX_RETRY_ATTEMPTS) {
-                    message.put("retry_count", retryCount + 1);
-                    sendMessage(message.toString());
-                } else {
-                    // Max retries reached, notify UI of failure
-                    JSONObject failureNotification = new JSONObject();
-                    failureNotification.put("type", "send_failure");
-                    failureNotification.put("originalMessage", message);
-                    // This will be handled by the message listener in ChatController
-                    sendMessage(failureNotification.toString());
-                    messageCache.removeDeliveredMessage(message.getString("id"));
+        if (userEmail == null) {
+            throw new IllegalStateException("User email not set. Connect first.");
+        }
+        
+        messageCache = new MessageCache(userEmail);
+        retryService = Executors.newSingleThreadScheduledExecutor();
+        connected = true;
+        
+        // Schedule retry task
+        retryService.scheduleAtFixedRate(() -> {
+            if (connected && socket != null && !socket.isClosed()) {
+                List<JSONObject> pendingMessages = messageCache.getPendingMessages();
+                for (JSONObject message : pendingMessages) {
+                    // Check if retry count exceeded
+                    int retryCount = message.optInt("retry_count", 0);
+                    if (retryCount < MAX_RETRY_ATTEMPTS) {
+                        message.put("retry_count", retryCount + 1);
+                        sendMessage(message.toString());
+                    } else {
+                        // Max retries reached, notify UI of failure
+                        JSONObject failureNotification = new JSONObject();
+                        failureNotification.put("type", "send_failure");
+                        failureNotification.put("originalMessage", message);
+                        // This will be handled by the message listener in ChatController
+                        sendMessage(failureNotification.toString());
+                        messageCache.removeDeliveredMessage(message.getString("id"));
+                    }
                 }
             }
-        }
-    }, RETRY_INTERVAL_MS, RETRY_INTERVAL_MS, TimeUnit.MILLISECONDS);
-}
+        }, RETRY_INTERVAL_MS, RETRY_INTERVAL_MS, TimeUnit.MILLISECONDS);
+    }
 
     /**
      * Send a message to the server
@@ -144,7 +146,52 @@ private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
     public void processDeliveryReceipt(String messageId) {
         messageCache.removeDeliveredMessage(messageId);
     }
+    
+    // *** GROUP FEATURE ***
+    public void createGroupOnServer(String groupName, List<String> members) {
+        try {
+            JSONObject groupRequest = new JSONObject();
+            groupRequest.put("type", "create_group");
+            groupRequest.put("groupName", groupName);
+            JSONArray membersArray = new JSONArray();
+            for (String m : members) {
+                membersArray.put(m);
+            }
+            groupRequest.put("members", membersArray);
+            groupRequest.put("sender", userEmail);
+            sendMessage(groupRequest.toString());
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+    
+    // NEW: Method to retrieve all user emails (for group creation)
+    public List<String> getAllUserEmails() {
+        return new ArrayList<>(contacts);
+    }
 
+    // Helper methods for contacts management
+    public static void loadContacts() {
+        try (BufferedReader reader = new BufferedReader(new FileReader(CONTACTS_FILE_PREFIX + userEmail + ".txt"))) {
+            String contact;
+            while ((contact = reader.readLine()) != null) {
+                contacts.add(contact);
+            }
+        } catch (IOException e) {
+            System.err.println("Error loading contacts: " + e.getMessage());
+        }
+    }
+
+    public static void saveContacts() {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(CONTACTS_FILE_PREFIX + userEmail + ".txt"))) {
+            for (String contact : contacts) {
+                writer.println(contact);
+            }
+        } catch (IOException e) {
+            System.err.println("Error saving contacts: " + e.getMessage());
+        }
+    }
+    
     /**
      * Main method for command line client usage
      */
@@ -180,28 +227,6 @@ private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
             System.err.println("Error: " + e.getMessage());
         } finally {
             client.disconnect();
-        }
-    }
-
-    // Helper methods for contacts management
-    public static void loadContacts() {
-        try (BufferedReader reader = new BufferedReader(new FileReader(CONTACTS_FILE_PREFIX + userEmail + ".txt"))) {
-            String contact;
-            while ((contact = reader.readLine()) != null) {
-                contacts.add(contact);
-            }
-        } catch (IOException e) {
-            System.err.println("Error loading contacts: " + e.getMessage());
-        }
-    }
-
-    public static void saveContacts() {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(CONTACTS_FILE_PREFIX + userEmail + ".txt"))) {
-            for (String contact : contacts) {
-                writer.println(contact);
-            }
-        } catch (IOException e) {
-            System.err.println("Error saving contacts: " + e.getMessage());
         }
     }
 }

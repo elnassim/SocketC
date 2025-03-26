@@ -2,9 +2,7 @@ package com.chatapp.server.handler;
 
 import java.io.*;
 import java.net.Socket;
-import java.net.URL;
 import java.util.List;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -17,9 +15,12 @@ public class ClientHandler implements Runnable {
     private BufferedReader in;
     private PrintWriter out;
     private List<ClientHandler> clients;
-    private String userEmail; // Store authenticated user's email
+    private String userEmail; // authenticated user's email
     private UserService userService;
     private MessageService messageService;
+
+    // *** GROUP FEATURE: Map to store groups (group name -> list of member emails)
+    private static final java.util.Map<String, List<String>> groupMap = new java.util.concurrent.ConcurrentHashMap<>();
 
     public ClientHandler(Socket socket, List<ClientHandler> clients) throws IOException {
         this.clientSocket = socket;
@@ -33,7 +34,6 @@ public class ClientHandler implements Runnable {
     @Override
     public void run() {
         try {
-            // Read login credentials from the client
             String credentials = in.readLine();
             System.out.println("Received credentials: " + credentials);
 
@@ -41,19 +41,15 @@ public class ClientHandler implements Runnable {
                 JSONObject loginRequest = new JSONObject(credentials);
                 String email = loginRequest.getString("email");
                 String password = loginRequest.getString("password");
-                this.userEmail = email; // Store email for later use
-
+                this.userEmail = email;
                 System.out.println("Attempting to authenticate: " + email);
 
-                // Authenticate the user
                 if (userService.authenticateUser(email, password)) {
-                    out.println("AUTH_SUCCESS"); // Send success response
+                    out.println("AUTH_SUCCESS");
                     System.out.println("User authenticated: " + email);
-
-                    // Handle further communication (e.g., chat)
                     handleChat();
                 } else {
-                    out.println("AUTH_FAILED"); // Send failure response
+                    out.println("AUTH_FAILED");
                     System.out.println("Authentication failed for: " + email);
                 }
             } catch (JSONException e) {
@@ -71,7 +67,7 @@ public class ClientHandler implements Runnable {
     private void cleanup() {
         try {
             clients.remove(this);
-            System.out.println("Client removed from active clients list. Active clients: " + clients.size());
+            System.out.println("Client removed. Active clients: " + clients.size());
             if (clientSocket != null && !clientSocket.isClosed()) {
                 clientSocket.close();
                 System.out.println("Client socket closed");
@@ -82,9 +78,7 @@ public class ClientHandler implements Runnable {
     }
 
     private void handleChat() {
-        // First, deliver any offline messages waiting for this user
         sendOfflineMessages();
-        
         try {
             String input;
             while ((input = in.readLine()) != null) {
@@ -95,58 +89,76 @@ public class ClientHandler implements Runnable {
                     if ("private".equals(messageType)) {
                         String recipient = messageJson.getString("to");
                         String content = messageJson.getString("content");
-                        
-                        // Generate message ID and conversation ID
-                        String conversationId = messageService.generateConversationId(userEmail, recipient);
-                        String messageId = "msg_" + System.currentTimeMillis() + "_" + 
-                                          Integer.toHexString((int)(Math.random() * 10000));
-                        
-                        // Create a proper message object for routing
-                        JSONObject routingMessage = new JSONObject();
-                        routingMessage.put("id", messageId);
-                        routingMessage.put("type", "private");
-                        routingMessage.put("sender", userEmail);
-                        routingMessage.put("content", content);
-                        routingMessage.put("conversationId", conversationId);
-                        routingMessage.put("timestamp", System.currentTimeMillis());
-                        routingMessage.put("delivered", false);
-                        routingMessage.put("read", false);
-                        
-                        // Find recipient in clients list
-                        ClientHandler recipientHandler = findClientByEmail(recipient);
-                        if (recipientHandler != null) {
-                            recipientHandler.sendMessage(routingMessage.toString());
+                        // *** GROUP FEATURE: Check if recipient is a group
+                        if (groupMap.containsKey(recipient)) {
+                            List<String> members = groupMap.get(recipient);
+                            String messageId = "msg_" + System.currentTimeMillis() + "_" + 
+                                               Integer.toHexString((int)(Math.random() * 10000));
+                            JSONObject routingMessage = new JSONObject();
+                            routingMessage.put("id", messageId);
+                            routingMessage.put("type", "private");
+                            routingMessage.put("sender", userEmail);
+                            routingMessage.put("content", content);
+                            // Mark this message as a group message
+                            routingMessage.put("isGroup", true);
+                            routingMessage.put("groupName", recipient);
                             
-                            // Send delivery receipt
+                            for (String m : members) {
+                                ClientHandler memberHandler = findClientByEmail(m);
+                                if (memberHandler != null) {
+                                    memberHandler.sendMessage(routingMessage.toString());
+                                } else {
+                                    messageService.storeOfflineMessage(m, routingMessage);
+                                }
+                            }
+                            
                             JSONObject deliveryReceipt = new JSONObject();
                             deliveryReceipt.put("type", "delivery_receipt");
                             deliveryReceipt.put("messageId", messageId);
                             deliveryReceipt.put("status", "delivered");
                             sendMessage(deliveryReceipt.toString());
                         } else {
-                            // Store for offline delivery
-                            messageService.storeOfflineMessage(recipient, routingMessage);
+                            String conversationId = messageService.generateConversationId(userEmail, recipient);
+                            String messageId = "msg_" + System.currentTimeMillis() + "_" + 
+                                               Integer.toHexString((int)(Math.random() * 10000));
+                            JSONObject routingMessage = new JSONObject();
+                            routingMessage.put("id", messageId);
+                            routingMessage.put("type", "private");
+                            routingMessage.put("sender", userEmail);
+                            routingMessage.put("content", content);
+                            routingMessage.put("conversationId", conversationId);
+                            routingMessage.put("timestamp", System.currentTimeMillis());
+                            routingMessage.put("delivered", false);
+                            routingMessage.put("read", false);
                             
-                            // Send pending status
-                            JSONObject pendingReceipt = new JSONObject();
-                            pendingReceipt.put("type", "delivery_receipt");
-                            pendingReceipt.put("messageId", messageId);
-                            pendingReceipt.put("status", "pending");
-                            sendMessage(pendingReceipt.toString());
+                            ClientHandler recipientHandler = findClientByEmail(recipient);
+                            if (recipientHandler != null) {
+                                recipientHandler.sendMessage(routingMessage.toString());
+                                
+                                JSONObject deliveryReceipt = new JSONObject();
+                                deliveryReceipt.put("type", "delivery_receipt");
+                                deliveryReceipt.put("messageId", messageId);
+                                deliveryReceipt.put("status", "delivered");
+                                sendMessage(deliveryReceipt.toString());
+                            } else {
+                                messageService.storeOfflineMessage(recipient, routingMessage);
+                                
+                                JSONObject pendingReceipt = new JSONObject();
+                                pendingReceipt.put("type", "delivery_receipt");
+                                pendingReceipt.put("messageId", messageId);
+                                pendingReceipt.put("status", "pending");
+                                sendMessage(pendingReceipt.toString());
+                            }
                         }
                     } 
                     else if ("broadcast".equals(messageType)) {
                         String content = messageJson.getString("content");
-                        
-                        // Create enhanced broadcast message
                         JSONObject broadcastMsg = messageService.createBroadcastMessage(userEmail, content);
                         broadcastMessage(broadcastMsg.toString());
                     }
                     else if ("read_receipt".equals(messageType)) {
                         String messageId = messageJson.getString("messageId");
                         String sender = messageJson.getString("sender");
-                        
-                        // Find original sender and forward the read receipt
                         ClientHandler senderHandler = findClientByEmail(sender);
                         if (senderHandler != null) {
                             JSONObject readReceipt = new JSONObject();
@@ -154,17 +166,42 @@ public class ClientHandler implements Runnable {
                             readReceipt.put("messageId", messageId);
                             readReceipt.put("reader", userEmail);
                             readReceipt.put("timestamp", System.currentTimeMillis());
-                            
                             senderHandler.sendMessage(readReceipt.toString());
                         }
                     }
+                    // *** GROUP FEATURE: Handle group creation request ***
+                    else if ("create_group".equals(messageType)) {
+                        String groupName = messageJson.getString("groupName");
+                        JSONArray membersArray = messageJson.getJSONArray("members");
+                        List<String> groupMembers = new java.util.ArrayList<>();
+                        for (int i = 0; i < membersArray.length(); i++) {
+                            groupMembers.add(membersArray.getString(i));
+                        }
+                        groupMap.put(groupName, groupMembers);
+                        
+                        for (String member : groupMembers) {
+                            ClientHandler memberHandler = findClientByEmail(member);
+                            if (memberHandler != null) {
+                                JSONObject groupCreatedMsg = new JSONObject();
+                                groupCreatedMsg.put("type", "group_created");
+                                groupCreatedMsg.put("groupName", groupName);
+                                groupCreatedMsg.put("info", "You have been added to a new group");
+                                memberHandler.sendMessage(groupCreatedMsg.toString());
+                            }
+                        }
+                        
+                        JSONObject ack = new JSONObject();
+                        ack.put("type", "system");
+                        ack.put("content", "Group '" + groupName + "' created successfully!");
+                        sendMessage(ack.toString());
+                        
+                        System.out.println("Group created: " + groupName + " with members: " + groupMembers);
+                    }
                     else if ("disconnect".equals(messageType)) {
-                        // Handle proper disconnection
                         System.out.println("Client " + userEmail + " disconnecting...");
                         break;
                     }
                 } catch (JSONException e) {
-                    // If not JSON, treat as legacy plain text message
                     System.out.println("Received non-JSON message: " + input);
                     final String formattedMessage = userEmail + ": " + input;
                     broadcastMessage(formattedMessage);
@@ -182,20 +219,17 @@ public class ClientHandler implements Runnable {
             for (String messageJson : pendingMessages) {
                 sendMessage(messageJson);
             }
-            
-            // Send a system notification about offline messages
             JSONObject notification = new JSONObject();
             notification.put("type", "system");
-            notification.put("content", "You received " + pendingMessages.size() + 
-                            " message(s) while you were offline");
+            notification.put("content", "You received " + pendingMessages.size() + " message(s) while you were offline");
             sendMessage(notification.toString());
         }
     }
+    
     public String getUserEmail() {
         return userEmail;
     }
 
-    // Find a client by email
     private ClientHandler findClientByEmail(String email) {
         for (ClientHandler client : clients) {
             if (email.equals(client.userEmail)) {
@@ -205,7 +239,6 @@ public class ClientHandler implements Runnable {
         return null;
     }
 
-    // Method to broadcast message to all clients
     private void broadcastMessage(String message) {
         synchronized (clients) {
             for (ClientHandler client : clients) {
@@ -214,7 +247,6 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    // Send message to this client
     public void sendMessage(String message) {
         if (out != null) {
             out.println(message);

@@ -44,6 +44,12 @@
                     text="Delete Contact"
                     onAction="#handleDeleteContactButton"
                     styleClass="primary-button" />
+
+            <!-- *** GROUP FEATURE *** -->
+            <Button fx:id="createGroupButton"
+                    text="Create Group"
+                    onAction="#handleCreateGroupButton"
+                    styleClass="primary-button" />
         </VBox>
     </left>
 
