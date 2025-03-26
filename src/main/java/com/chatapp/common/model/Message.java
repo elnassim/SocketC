@@ -1,6 +1,7 @@
 package com.chatapp.common.model;
 
 import java.time.Instant;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -15,6 +16,12 @@ public class Message {
     private boolean delivered;
     private boolean read;
     private String type; // "private" or "broadcast"
+
+    public enum Status {
+        SENT, DELIVERED, READ
+    }
+
+    private Status status;
     
     public Message(String sender, String content, String type) {
         this.id = generateId();
@@ -24,6 +31,7 @@ public class Message {
         this.timestamp = System.currentTimeMillis();
         this.delivered = false;
         this.read = false;
+        this.status = Status.SENT;
     }
     
     private String generateId() {
@@ -67,6 +75,10 @@ public class Message {
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
     
+    public Status getStatus() { return status; }
+    public void setStatus(Status status) { this.status = status; }
+    
+    
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         json.put("id", id);
@@ -77,20 +89,55 @@ public class Message {
         json.put("delivered", delivered);
         json.put("read", read);
         json.put("type", type);
+        
+        // Handle possible null status
+        if (status != null) {
+            json.put("status", status.name());
+        } else {
+            json.put("status", Status.SENT.name()); // Default to SENT if null
+        }
+        
         return json;
     }
     
     public static Message fromJson(JSONObject json) {
-        Message message = new Message(
-            json.getString("sender"),
-            json.getString("content"),
-            json.getString("type")
-        );
-        message.id = json.getString("id");
-        message.conversationId = json.getString("conversationId");
-        message.timestamp = json.getLong("timestamp");
-        message.delivered = json.getBoolean("delivered");
-        message.read = json.getBoolean("read");
-        return message;
+        try {
+            Message message = new Message(
+                json.getString("sender"),
+                json.getString("content"),
+                json.getString("type")
+            );
+            
+            // Set additional fields
+            if (json.has("id")) {
+                message.setId(json.getString("id"));
+            }
+            if (json.has("conversationId")) {
+                message.setConversationId(json.getString("conversationId"));
+            }
+            if (json.has("timestamp")) {
+                message.setTimestamp(json.getLong("timestamp"));
+            }
+            if (json.has("delivered")) {
+                message.setDelivered(json.getBoolean("delivered"));
+            }
+            if (json.has("read")) {
+                message.setRead(json.getBoolean("read"));
+            }
+            if (json.has("status") && json.getString("status") != null) {
+                try {
+                    message.setStatus(Status.valueOf(json.getString("status")));
+                } catch (IllegalArgumentException e) {
+                    message.setStatus(Status.SENT);
+                }
+            }
+            
+            // MISSING RETURN STATEMENT: Add this line
+            return message;
+            
+        } catch (JSONException e) {
+            System.err.println("Error parsing message: " + e.getMessage());
+            throw new RuntimeException("Error parsing Message from JSON", e);
+        }
     }
 }
