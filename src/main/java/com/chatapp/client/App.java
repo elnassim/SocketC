@@ -14,15 +14,15 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         try {
-            // Load the login view
-            Parent root = FXMLLoader.load(getClass().getResource("/com/chatapp/client/view/login-view.fxml"));
-            primaryStage.setTitle("Chat Client - Login");
-            primaryStage.setScene(new Scene(root, 350, 250));
+            // Load the signup view instead of the login view
+            Parent root = FXMLLoader.load(getClass().getResource("/com/chatapp/client/view/signup-view.fxml"));
+            primaryStage.setTitle("Chat Client - Sign Up");
+            primaryStage.setScene(new Scene(root, 500, 600)); // Adjusted dimensions for the signup page
             primaryStage.setResizable(false);
             primaryStage.show();
         } catch (Exception e) {
             e.printStackTrace();
-            System.err.println("Error loading login view: " + e.getMessage());
+            System.err.println("Error loading signup view: " + e.getMessage());
         }
     }
     

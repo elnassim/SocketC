@@ -1,18 +1,17 @@
 [
     {
-      "email": "nassim@gmail.com",
-      "password": "1234"
+        "username": "nassim",
+        "email": "nassim@gmail.com",
+        "password": "1234"
     },
     {
-      "email": "manal@gmail.com",
-      "password": "0000"
+        "username": "manal",
+        "email": "manal@gmail.com",
+        "password": "0000"
     },
     {
-      "email": "sara@gmail.com",
-      "password": "1111"
-    },
-    {
-      "email": "ali@gmail.com",
-      "password": "1111"
+        "username": "sara",
+        "email": "sara@gmail.com",
+        "password": "1111"
     }
-  ]
+]

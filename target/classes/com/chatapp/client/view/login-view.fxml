@@ -19,7 +19,7 @@
                   <Font name="System Bold" size="18.0" />
                </font>
             </Label>
-            <Label text="Email" />
+            <Label text="Email miaow" />
             <TextField fx:id="emailField" promptText="Enter your email" />
             <Label text="Password" />
             <PasswordField fx:id="passwordField" promptText="Enter your password" />

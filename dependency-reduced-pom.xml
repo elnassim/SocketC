@@ -19,7 +19,7 @@
         <artifactId>javafx-maven-plugin</artifactId>
         <version>${javafx.maven.plugin.version}</version>
         <configuration>
-          <mainClass>com.chatapp.LoginApp</mainClass>
+          <mainClass>com.chatapp.client.App</mainClass>
         </configuration>
       </plugin>
       <plugin>
@@ -34,7 +34,7 @@
             <configuration>
               <transformers>
                 <transformer>
-                  <mainClass>com.chatapp.LoginApp</mainClass>
+                  <mainClass>com.chatapp.client.App</mainClass>
                 </transformer>
               </transformers>
             </configuration>
@@ -47,12 +47,21 @@
         <version>3.0.0</version>
         <executions>
           <execution>
+            <id>server</id>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <configuration>
+              <mainClass>com.chatapp.server.Server</mainClass>
+            </configuration>
+          </execution>
+          <execution>
             <id>client</id>
             <goals>
               <goal>java</goal>
             </goals>
             <configuration>
-              <mainClass>com.chatapp.Client</mainClass>
+              <mainClass>com.chatapp.client.App</mainClass>
             </configuration>
           </execution>
         </executions>

@@ -1,14 +1,17 @@
 package com.chatapp.data.repository;
 
-import com.chatapp.common.model.User;
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import com.chatapp.common.model.User;
 
 /**
  * Repository for user data access
@@ -45,9 +48,9 @@ public class UserRepository {
             JSONArray usersArray = new JSONArray(jsonContent.toString());
             for (int i = 0; i < usersArray.length(); i++) {
                 JSONObject userJson = usersArray.getJSONObject(i);
+                String username = userJson.getString("username");
                 String email = userJson.getString("email");
                 String password = userJson.getString("password");
-                String username = email.substring(0, email.indexOf("@"));
 
                 users.put(username, new User(username, password, email));
             }
