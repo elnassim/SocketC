@@ -2,9 +2,9 @@ package com.chatapp.client.controller;
 
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
 import javafx.fxml.FXML;
-import javafx.geometry.Pos;
+import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
@@ -13,6 +13,7 @@ import javafx.stage.Stage;
 import javafx.geometry.Insets;
 
 import org.json.JSONArray;
+import javafx.geometry.Pos;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -40,6 +41,7 @@ public class ChatController {
     @FXML private Button deleteContactButton;
     @FXML private Label contactNameLabel;
     @FXML private TabPane conversationTabPane;
+    @FXML private Button logoutButton; // Bouton de déconnexion ajouté
 
     /* ---------- Champs internes ---------- */
     private String userEmail;
@@ -53,7 +55,7 @@ public class ChatController {
     private ClientNetworkService networkService;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
     
-    // Tab management
+    // Gestion des onglets
     private Map<String, Tab> contactTabs = new HashMap<>();
     private Map<String, VBox> contactMessageContainers = new HashMap<>();
 
@@ -77,9 +79,10 @@ public class ChatController {
         
         // Contact selection handler
         contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) handleContactClick(newVal);
+            if (newVal != null) {
+                handleContactClick(newVal);
+            }
         });
-
 
         conversationTabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab != null) {
@@ -87,7 +90,7 @@ public class ChatController {
             }
         });
     
-        // Add window close handler
+        // Gestion de la fermeture de la fenêtre
         Platform.runLater(() -> {
             Stage stage = (Stage) messageInput.getScene().getWindow();
             stage.setOnCloseRequest(event -> {
@@ -135,8 +138,9 @@ public class ChatController {
                     Platform.runLater(() -> handleIncomingMessage(receivedMsg));
                 }
             } catch (IOException e) {
-                if (connected) Platform.runLater(() -> 
-                    addSystemMessage("Connection lost: " + e.getMessage()));
+                if (connected) {
+                    Platform.runLater(() -> addSystemMessage("Connection lost: " + e.getMessage()));
+                }
             }
         }).start();
     }
@@ -245,17 +249,23 @@ public class ChatController {
         Button sendButton = new Button("Send");
         sendButton.getStyleClass().add("primary-button");
         
-        EventHandler<ActionEvent> sendHandler = event -> {
+        // Event handler for sending message
+        sendButton.setOnAction(event -> {
             String msg = messageField.getText().trim();
             if (!msg.isEmpty()) {
                 sendPrivateMessage(contactEmail, msg);
                 messageField.clear();
                 messageField.requestFocus();
             }
-        };
-
-        sendButton.setOnAction(sendHandler);
-        messageField.setOnAction(sendHandler);
+        });
+        messageField.setOnAction(event -> {
+            String msg = messageField.getText().trim();
+            if (!msg.isEmpty()) {
+                sendPrivateMessage(contactEmail, msg);
+                messageField.clear();
+                messageField.requestFocus();
+            }
+        });
 
         inputArea.getChildren().addAll(messageField, sendButton);
         conversationView.getChildren().addAll(scrollPane, inputArea);
@@ -326,9 +336,9 @@ public class ChatController {
     }
 
     @FXML
-public void handleSendButtonAction(ActionEvent event) {
-    sendMessage();
-}
+    public void handleSendButtonAction(ActionEvent event) {
+        sendMessage();
+    }
 
     private void handlePrivateCommand(String messageText) {
         int spaceIndex = messageText.indexOf(" ");
@@ -348,9 +358,9 @@ public void handleSendButtonAction(ActionEvent event) {
 
     private void sendPrivateMessage(String recipient, String content) {
         try {
-            String messageId = "msg_" + System.currentTimeMillis() + "_" + 
-                               Integer.toHexString((int)(Math.random() * 10000));
-                
+            String messageId = "msg_" + System.currentTimeMillis() + "_" +
+                    Integer.toHexString((int) (Math.random() * 10000));
+
             JSONObject privateMsg = new JSONObject();
             privateMsg.put("type", "private");
             privateMsg.put("to", recipient);
@@ -402,6 +412,7 @@ public void handleSendButtonAction(ActionEvent event) {
         box.getStyleClass().add("system-message");
         messageContainer.getChildren().add(box);
     }
+
     private void handleIncomingMessage(String message) {
         try {
             JSONObject msgJson = new JSONObject(message);
@@ -574,9 +585,7 @@ public void handleSendButtonAction(ActionEvent event) {
             String status = receipt.getString("status");
             
             // Update UI to show message status
-            Platform.runLater(() -> {
-                updateMessageStatus(messageId, status);
-            });
+            Platform.runLater(() -> updateMessageStatus(messageId, status));
             
             // Remove from retry cache if delivered
             if ("delivered".equals(status) && networkService != null) {
@@ -587,21 +596,19 @@ public void handleSendButtonAction(ActionEvent event) {
         }
     }
     
-    // Add method to handle read receipts
+    // Gestion des read receipts
     private void handleReadReceipt(JSONObject receipt) {
         try {
             String messageId = receipt.getString("messageId");
             String reader = receipt.getString("reader");
             
-            Platform.runLater(() -> {
-                updateMessageStatus(messageId, "read");
-            });
+            Platform.runLater(() -> updateMessageStatus(messageId, "read"));
         } catch (JSONException e) {
             System.err.println("Error processing read receipt: " + e.getMessage());
         }
     }
     
-    // Add method to send read receipts
+    // Envoi d'un read receipt
     private void sendReadReceipt(String messageId, String sender) {
         try {
             JSONObject readReceipt = new JSONObject();
@@ -613,6 +620,7 @@ public void handleSendButtonAction(ActionEvent event) {
             System.err.println("Error sending read receipt: " + e.getMessage());
         }
     }
+    
     private void addOutgoingMessageToContainer(VBox container, String text, String messageId) {
         VBox messageBox = new VBox(3);
         messageBox.setAlignment(Pos.CENTER_RIGHT);
@@ -635,6 +643,7 @@ public void handleSendButtonAction(ActionEvent event) {
         
         container.getChildren().add(wrapper);
     }
+    
     public void updateMessageStatus(String messageId, String status) {
         // Find all status labels matching this message ID
         for (VBox container : contactMessageContainers.values()) {
@@ -646,11 +655,11 @@ public void handleSendButtonAction(ActionEvent event) {
                         break;
                     case "read":
                         statusLabel.setText("✓✓ Read");
-                        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #4fc3f7;"); // Blue color
+                        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #4fc3f7;");
                         break;
                     case "failed":
                         statusLabel.setText("❌ Failed");
-                        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #e57373;"); // Red color
+                        statusLabel.setStyle("-fx-font-size: 10px; -fx-text-fill: #e57373;");
                         break;
                     case "pending":
                         statusLabel.setText("⏱ Pending");
@@ -719,7 +728,6 @@ public void handleSendButtonAction(ActionEvent event) {
         contactsList.getItems().setAll(contacts);
     }
 
-
     @FXML
     public void handleAddContactButton(ActionEvent event) {
         TextInputDialog dialog = new TextInputDialog();
@@ -750,35 +758,68 @@ public void handleSendButtonAction(ActionEvent event) {
         contactsList.getItems().setAll(sortedContacts);
     }
 
-   
-    
-    private void launchChatUI(String email, Socket socket, BufferedReader in, PrintWriter out) throws IOException {
-        // This method shouldn't be in ChatController at all
-        throw new UnsupportedOperationException("This method should not be called from ChatController");
-    }
-
-
     /**
      * Handler for the Delete Contact button
      */
     @FXML
-public void handleDeleteContactButton(ActionEvent event) {
-    String selectedContact = contactsList.getSelectionModel().getSelectedItem();
-    if (selectedContact != null) {
-        contacts.remove(selectedContact);
-        
-        // Remove any open tab for this contact
-        Tab tab = contactTabs.remove(selectedContact);
-        if (tab != null) {
-            conversationTabPane.getTabs().remove(tab);
+    public void handleDeleteContactButton(ActionEvent event) {
+        String selectedContact = contactsList.getSelectionModel().getSelectedItem();
+        if (selectedContact != null) {
+            contacts.remove(selectedContact);
+            
+            // Remove any open tab for this contact
+            Tab tab = contactTabs.remove(selectedContact);
+            if (tab != null) {
+                conversationTabPane.getTabs().remove(tab);
+            }
+            contactMessageContainers.remove(selectedContact);
+            
+            saveContacts();
+            refreshContactsList();
+            addSystemMessage("Contact removed: " + selectedContact);
+        } else {
+            addSystemMessage("No contact selected");
         }
-        contactMessageContainers.remove(selectedContact);
-        
-        saveContacts();
-        refreshContactsList();
-        addSystemMessage("Contact removed: " + selectedContact);
-    } else {
-        addSystemMessage("No contact selected");
     }
-}
+    
+    /**
+     * Handler for the Logout button
+     */
+    @FXML
+    private void handleLogoutButtonAction(ActionEvent event) {
+        // Fermer la connexion socket si elle est ouverte
+        if (socket != null && !socket.isClosed()) {
+            try {
+                socket.close();
+                System.out.println("Socket closed: " + socket.isClosed());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+        
+        
+        // Charger la vue de login
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/login-view.fxml"));
+            Parent loginView = loader.load();
+    
+            // Créer une nouvelle scène avec la vue de login
+            Scene loginScene = new Scene(loginView);
+    
+            // Récupérer la fenêtre actuelle
+            Stage stage = (Stage) logoutButton.getScene().getWindow();
+    
+            // Mettre à jour le titre et la scène de la fenêtre
+            stage.setTitle("Chat Application - Login");
+            stage.setScene(loginScene);
+            stage.show();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+    
+
+    // La méthode launchChatUI a été supprimée car elle ne devrait pas être appelée depuis ChatController.
 }

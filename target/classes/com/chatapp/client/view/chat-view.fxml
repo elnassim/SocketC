@@ -23,6 +23,13 @@
             <HBox styleClass="contacts-header">
                 <Label text="Chats" styleClass="contacts-header-label"/>
             </HBox>
+            <HBox styleClass="chat-header">
+                    <Label fx:id="contactNameLabel" text="Conversations" 
+                    styleClass="chat-header-label"/>
+                    <Button fx:id="logoutButton" text="Logout" 
+                    onAction="#handleLogoutButtonAction" 
+                    styleClass="primary-button" />
+            </HBox>
 
             <HBox styleClass="contacts-search">
                 <TextField fx:id="searchField" promptText="Search contacts..." />
