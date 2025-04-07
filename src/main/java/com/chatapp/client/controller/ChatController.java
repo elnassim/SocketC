@@ -1,9 +1,10 @@
 package com.chatapp.client.controller;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
-import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.fxml.FXML;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -11,9 +12,10 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.util.Duration;
 
 import org.json.JSONArray;
-import javafx.geometry.Pos;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -43,6 +45,9 @@ public class ChatController {
     @FXML private TabPane conversationTabPane;
     @FXML private Button logoutButton; // Bouton de déconnexion ajouté
 
+    // ----- Nouvelle barre de notification temporaire (à ajouter dans le FXML) -----
+    @FXML private Label notificationBar;
+
     /* ---------- Champs internes ---------- */
     private String userEmail;
     private Socket socket;
@@ -58,6 +63,8 @@ public class ChatController {
     // Gestion des onglets
     private Map<String, Tab> contactTabs = new HashMap<>();
     private Map<String, VBox> contactMessageContainers = new HashMap<>();
+    // ----- Nouvel attribut pour suivre les messages non lus par conversation -----
+    private Map<String, Integer> unreadMessageCounts = new HashMap<>();
 
     private static class MessageData {
         String sender;
@@ -77,6 +84,11 @@ public class ChatController {
     public void initialize() {
         messageInput.setOnAction(event -> sendMessage());
         
+        // Initialiser la barre de notification comme cachée
+        if (notificationBar != null) {
+            notificationBar.setVisible(false);
+        }
+        
         // Contact selection handler
         contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
@@ -86,6 +98,10 @@ public class ChatController {
 
         conversationTabPane.getSelectionModel().selectedItemProperty().addListener((obs, oldTab, newTab) -> {
             if (newTab != null) {
+                // Lorsqu'un onglet est sélectionné, on réinitialise le compteur pour cette conversation
+                String contactEmail = newTab.getText().replaceAll("\\s*\\(\\d+\\)", "");
+                unreadMessageCounts.put(contactEmail, 0);
+                updateTabTitle(contactEmail);
                 newTab.setStyle("");
             }
         });
@@ -170,6 +186,9 @@ public class ChatController {
         container.getChildren().add(box);
     }
 
+    /**
+     * Gère l'arrivée d'un message privé et met à jour le badge d'alerte si la conversation n'est pas active.
+     */
     private void handlePrivateMessage(String sender, String content) {
         storeMessage(sender, sender, content, true, false);
         
@@ -192,8 +211,14 @@ public class ChatController {
             // Add message to conversation container
             addIncomingMessageToContainer(contactMessageContainers.get(sender), sender, content);
             
-            // Highlight tab if not currently selected
-            flashContactTab(sender);
+            // Si l'onglet de cette conversation n'est pas actuellement sélectionné, incrémenter le badge de notification
+            Tab senderTab = contactTabs.get(sender);
+            if (senderTab != null && conversationTabPane.getSelectionModel().getSelectedItem() != senderTab) {
+                int newCount = unreadMessageCounts.getOrDefault(sender, 0) + 1;
+                unreadMessageCounts.put(sender, newCount);
+                updateTabTitle(sender);
+                flashContactTab(sender);
+            }
         });
     }
 
@@ -205,6 +230,9 @@ public class ChatController {
     /* ---------- Tab Management ---------- */
     private void handleContactClick(String contactEmail) {
         Tab contactTab = getOrCreateContactTab(contactEmail);
+        // Réinitialiser le compteur de notifications dès que l'utilisateur clique sur l'onglet
+        unreadMessageCounts.put(contactEmail, 0);
+        updateTabTitle(contactEmail);
         if (!conversationTabPane.getTabs().contains(contactTab)) {
             conversationTabPane.getTabs().add(contactTab);
         }
@@ -220,6 +248,10 @@ public class ChatController {
 
     private Tab createContactTab(String contactEmail) {
         Tab newTab = new Tab(contactEmail);
+        // Initialiser le compteur de notifications pour cette conversation
+        unreadMessageCounts.put(contactEmail, 0);
+        updateTabTitle(contactEmail);
+        
         VBox conversationView = new VBox();
         conversationView.setSpacing(5);
     
@@ -282,6 +314,21 @@ public class ChatController {
 
         loadConversationHistory(contactEmail, messagesBox);
         return newTab;
+    }
+
+    /**
+     * Met à jour le titre de l'onglet en y ajoutant le nombre de messages non lus (badge).
+     */
+    private void updateTabTitle(String contactEmail) {
+        Tab tab = contactTabs.get(contactEmail);
+        if (tab != null) {
+            int count = unreadMessageCounts.getOrDefault(contactEmail, 0);
+            if (count > 0) {
+                tab.setText(contactEmail + " (" + count + ")");
+            } else {
+                tab.setText(contactEmail);
+            }
+        }
     }
 
     private void loadConversationHistory(String contactEmail, VBox container) {
@@ -413,6 +460,20 @@ public class ChatController {
         messageContainer.getChildren().add(box);
     }
 
+    /**
+     * Affiche une barre de notification temporaire avec le texte passé en paramètre pendant 3 secondes.
+     */
+    private void displayTemporaryNotification(String text) {
+        if (notificationBar != null) {
+            notificationBar.setText(text);
+            notificationBar.setVisible(true);
+            // Créer une transition qui cache la barre après 3 secondes
+            PauseTransition pause = new PauseTransition(Duration.seconds(3));
+            pause.setOnFinished(event -> notificationBar.setVisible(false));
+            pause.play();
+        }
+    }
+
     private void handleIncomingMessage(String message) {
         try {
             JSONObject msgJson = new JSONObject(message);
@@ -443,6 +504,12 @@ public class ChatController {
             } else if ("system".equals(type)) {
                 String content = msgJson.getString("content");
                 addSystemMessage(content);
+            }
+            else if ("notification".equals(type)) {
+                // Modification : afficher <expéditeur> : <message>
+                String sender = msgJson.optString("from", "Unknown");
+                String content = msgJson.optString("content", "");
+                displayTemporaryNotification(sender + " : " + content);
             }
             else if ("HISTORY_RESPONSE".equals(type)) {
                 handleHistoryResponse(msgJson);
@@ -796,9 +863,6 @@ public class ChatController {
                 e.printStackTrace();
             }
         }
-
-
-        
         
         // Charger la vue de login
         try {
@@ -820,6 +884,5 @@ public class ChatController {
         }
     }
     
-
     // La méthode launchChatUI a été supprimée car elle ne devrait pas être appelée depuis ChatController.
 }

@@ -17,7 +17,7 @@ public class MessageService {
     public MessageService() {
         this.conversationService = new ConversationService();
           // Add logging to verify initialization
-    System.out.println("MessageService initialized with ConversationService");
+        System.out.println("MessageService initialized with ConversationService");
     }
 
     /**
@@ -91,5 +91,18 @@ public class MessageService {
     public void updateMessageStatus(String messageId, String conversationId, Message.Status status) {
         // For now, just log the status change
         System.out.println("Message " + messageId + " status updated to " + status);
+    }
+    
+    /**
+     * Create a notification JSON object for new messages.
+     */
+    public JSONObject createNotification(String sender, String content) {
+        JSONObject notification = new JSONObject();
+        notification.put("type", "notification");
+        notification.put("notificationType", "new_message");
+        notification.put("from", sender);
+        notification.put("content", content);
+        notification.put("timestamp", System.currentTimeMillis());
+        return notification;
     }
 }

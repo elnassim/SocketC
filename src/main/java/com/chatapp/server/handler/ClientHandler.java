@@ -122,6 +122,10 @@ public class ClientHandler implements Runnable {
                             deliveryReceipt.put("messageId", messageId);
                             deliveryReceipt.put("status", "delivered");
                             sendMessage(deliveryReceipt.toString());
+                            
+                            // --- Nouvelle portion pour notifications en temps réel ---
+                            JSONObject notification = messageService.createNotification(userEmail, content);
+                            recipientHandler.sendMessage(notification.toString());
                         } else {
                             // Store for offline delivery
                             messageService.storeOfflineMessage(recipient, routingMessage);

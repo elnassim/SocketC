@@ -17,6 +17,17 @@
             fx:controller="com.chatapp.client.controller.ChatController"
             stylesheets="@../styles.css">
 
+    <!-- Barre de notification temporaire en haut avec bordure verte -->
+    <top>
+        <HBox alignment="CENTER" spacing="10">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+            <Label fx:id="notificationBar" text="" visible="false" 
+                   style="-fx-border-color: green; -fx-border-width: 2; -fx-padding: 5;"/>
+        </HBox>
+    </top>
+
     <!-- Panneau gauche : liste des contacts et boutons -->
     <left>
         <VBox styleClass="contacts-panel">
@@ -24,11 +35,11 @@
                 <Label text="Chats" styleClass="contacts-header-label"/>
             </HBox>
             <HBox styleClass="chat-header">
-                    <Label fx:id="contactNameLabel" text="Conversations" 
-                    styleClass="chat-header-label"/>
+                    <!-- fx:id retiré ici pour éviter la duplication -->
+                    <Label text="Conversations" styleClass="chat-header-label"/>
                     <Button fx:id="logoutButton" text="Logout" 
-                    onAction="#handleLogoutButtonAction" 
-                    styleClass="primary-button" />
+                            onAction="#handleLogoutButtonAction" 
+                            styleClass="primary-button" />
             </HBox>
 
             <HBox styleClass="contacts-search">
@@ -58,6 +69,7 @@
     <center>
         <VBox fx:id="chatArea" styleClass="chat-area">
             <HBox styleClass="chat-header">
+                <!-- fx:id conservé ici pour le contrôle -->
                 <Label fx:id="contactNameLabel" text="Conversations" styleClass="chat-header-label"/>
             </HBox>
 
