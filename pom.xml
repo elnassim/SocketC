@@ -38,12 +38,41 @@
             <artifactId>javafx-base</artifactId>
             <version>${javafx.version}</version>
         </dependency>
-        <!-- Add JSON dependency -->
+
+        <!-- JSON dependency -->
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
             <version>20230618</version>
         </dependency>
+
+        <!-- MySQL Connector -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+
+        <!-- HikariCP Connection Pool -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>4.0.3</version>
+        </dependency>
+
+        <!-- SLF4J API and Simple binding (required by HikariCP) -->
+<dependency>
+    <groupId>org.slf4j</groupId>
+    <artifactId>slf4j-api</artifactId>
+    <version>1.7.36</version>
+</dependency>
+
+        <!-- SLF4J implementation -->
+<dependency>
+    <groupId>org.slf4j</groupId>
+    <artifactId>slf4j-simple</artifactId>
+    <version>1.7.36</version>
+</dependency>
     </dependencies>
 
     <build>
