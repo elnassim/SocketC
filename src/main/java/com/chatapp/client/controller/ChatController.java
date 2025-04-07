@@ -11,9 +11,10 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.layout.Priority;
 
 import org.json.JSONArray;
-import javafx.geometry.Pos;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -25,7 +26,7 @@ import com.chatapp.common.model.User;
 import com.chatapp.client.network.ClientNetworkService;
 
 /**
- * Contrôleur principal de l'application de chat avec onglets de conversation.
+ * Main controller for the chat application with conversation tabs.
  */
 public class ChatController {
 
@@ -41,17 +42,18 @@ public class ChatController {
     @FXML private Button deleteContactButton;
     @FXML private Label contactNameLabel;
     @FXML private TabPane conversationTabPane;
-    @FXML private Button logoutButton; // Bouton de déconnexion ajouté
+    @FXML private Button logoutButton;
+    @FXML private Button createGroupButton;
 
-    /* ---------- Champs internes ---------- */
+    /* ---------- Internal Fields ---------- */
     private String userEmail;
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
     private boolean connected = false;
     private HashSet<String> contacts = new HashSet<>();
+    // conversationMap keys: for one-to-one, use sender email; for groups, use group name
     private Map<String, List<MessageData>> conversationMap = new HashMap<>();
-    private String currentConversationKey = null;
     private ClientNetworkService networkService;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
     
@@ -64,7 +66,6 @@ public class ChatController {
         String content;
         boolean isPrivate;
         boolean isOutgoing;
-
         MessageData(String sender, String content, boolean isPrivate, boolean isOutgoing) {
             this.sender = sender;
             this.content = content;
@@ -77,7 +78,7 @@ public class ChatController {
     public void initialize() {
         messageInput.setOnAction(event -> sendMessage());
         
-        // Contact selection handler
+        // When a contact is clicked, open its conversation tab
         contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
                 handleContactClick(newVal);
@@ -90,7 +91,7 @@ public class ChatController {
             }
         });
     
-        // Gestion de la fermeture de la fenêtre
+        // Handle window close event to cleanly close socket connection
         Platform.runLater(() -> {
             Stage stage = (Stage) messageInput.getScene().getWindow();
             stage.setOnCloseRequest(event -> {
@@ -116,7 +117,6 @@ public class ChatController {
         // Initialize network service
         this.networkService = new ClientNetworkService();
         
-        // Set up retry mechanism for pending messages
         try {
             this.networkService.initRetryMechanism();
         } catch (Exception e) {
@@ -144,6 +144,7 @@ public class ChatController {
             }
         }).start();
     }
+    
     private void requestConversationHistory(String contactEmail) {
         try {
             System.out.println("Requesting history for: " + contactEmail);
@@ -156,44 +157,38 @@ public class ChatController {
         }
     }
 
-    private void addOutgoingMessageToContainer(VBox container, String text) {
-        HBox box = new HBox();
-        box.setAlignment(Pos.CENTER_RIGHT);
-        box.setPadding(new Insets(5, 10, 5, 10));
-        
-        Label label = new Label("You: " + text);
-        label.getStyleClass().add("bubble-right");
-        label.setWrapText(true);
-        label.setMaxWidth(300);
-        
-        box.getChildren().add(label);
-        container.getChildren().add(box);
-    }
-
+    // For one-to-one messages (incoming)
     private void handlePrivateMessage(String sender, String content) {
         storeMessage(sender, sender, content, true, false);
-        
         Platform.runLater(() -> {
-            // Auto-add sender to contacts if not already there
             if (!contacts.contains(sender)) {
                 contacts.add(sender);
                 saveContacts();
                 refreshContactsList();
             }
-            
-            // Create or get tab for this sender
             if (!contactTabs.containsKey(sender)) {
                 Tab tab = createContactTab(sender);
                 if (!conversationTabPane.getTabs().contains(tab)) {
                     conversationTabPane.getTabs().add(tab);
                 }
             }
-            
-            // Add message to conversation container
             addIncomingMessageToContainer(contactMessageContainers.get(sender), sender, content);
-            
-            // Highlight tab if not currently selected
             flashContactTab(sender);
+        });
+    }
+
+    // For group messages, use the group name as the conversation key
+    private void handleGroupMessage(String groupName, String sender, String content) {
+        storeMessage(groupName, sender, content, true, false);
+        Platform.runLater(() -> {
+            if (!contactTabs.containsKey(groupName)) {
+                Tab tab = createContactTab(groupName);
+                if (!conversationTabPane.getTabs().contains(tab)) {
+                    conversationTabPane.getTabs().add(tab);
+                }
+            }
+            addIncomingMessageToContainer(contactMessageContainers.get(groupName), sender, content);
+            flashContactTab(groupName);
         });
     }
 
@@ -203,27 +198,26 @@ public class ChatController {
     }
 
     /* ---------- Tab Management ---------- */
-    private void handleContactClick(String contactEmail) {
-        Tab contactTab = getOrCreateContactTab(contactEmail);
-        if (!conversationTabPane.getTabs().contains(contactTab)) {
-            conversationTabPane.getTabs().add(contactTab);
+    private void handleContactClick(String contactKey) {
+        Tab tab = getOrCreateContactTab(contactKey);
+        if (!conversationTabPane.getTabs().contains(tab)) {
+            conversationTabPane.getTabs().add(tab);
         }
-        conversationTabPane.getSelectionModel().select(contactTab);
+        conversationTabPane.getSelectionModel().select(tab);
     }
 
-    private Tab getOrCreateContactTab(String contactEmail) {
-        if (contactTabs.containsKey(contactEmail)) {
-            return contactTabs.get(contactEmail);
+    private Tab getOrCreateContactTab(String key) {
+        if (contactTabs.containsKey(key)) {
+            return contactTabs.get(key);
         }
-        return createContactTab(contactEmail);
+        return createContactTab(key);
     }
 
-    private Tab createContactTab(String contactEmail) {
-        Tab newTab = new Tab(contactEmail);
+    private Tab createContactTab(String key) {
+        Tab newTab = new Tab(key);
         VBox conversationView = new VBox();
         conversationView.setSpacing(5);
     
-        // Messages area
         ScrollPane scrollPane = new ScrollPane();
         VBox messagesBox = new VBox(5);
         messagesBox.setPadding(new Insets(10));
@@ -232,9 +226,8 @@ public class ChatController {
         scrollPane.vvalueProperty().bind(messagesBox.heightProperty());
         scrollPane.getStyleClass().add("messages-scroll-pane");
         messagesBox.getStyleClass().add("messages-container");
-        VBox.setVgrow(scrollPane, javafx.scene.layout.Priority.ALWAYS);
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
         
-        // Input area
         HBox inputArea = new HBox(5);
         inputArea.setSpacing(10);
         inputArea.setPadding(new Insets(10));
@@ -242,9 +235,9 @@ public class ChatController {
         inputArea.getStyleClass().add("message-input-container");
         
         TextField messageField = new TextField();
-        messageField.setPromptText("Type message to " + contactEmail + "...");
+        messageField.setPromptText("Type message to " + key + "...");
         messageField.setPrefWidth(400);
-        HBox.setHgrow(messageField, javafx.scene.layout.Priority.ALWAYS);
+        HBox.setHgrow(messageField, Priority.ALWAYS);
         
         Button sendButton = new Button("Send");
         sendButton.getStyleClass().add("primary-button");
@@ -253,7 +246,7 @@ public class ChatController {
         sendButton.setOnAction(event -> {
             String msg = messageField.getText().trim();
             if (!msg.isEmpty()) {
-                sendPrivateMessage(contactEmail, msg);
+                sendPrivateMessage(key, msg);
                 messageField.clear();
                 messageField.requestFocus();
             }
@@ -261,7 +254,7 @@ public class ChatController {
         messageField.setOnAction(event -> {
             String msg = messageField.getText().trim();
             if (!msg.isEmpty()) {
-                sendPrivateMessage(contactEmail, msg);
+                sendPrivateMessage(key, msg);
                 messageField.clear();
                 messageField.requestFocus();
             }
@@ -272,15 +265,15 @@ public class ChatController {
         newTab.setContent(conversationView);
         newTab.setClosable(true);
 
-        contactTabs.put(contactEmail, newTab);
-        contactMessageContainers.put(contactEmail, messagesBox);
+        contactTabs.put(key, newTab);
+        contactMessageContainers.put(key, messagesBox);
         
         newTab.setOnClosed(e -> {
-            contactTabs.remove(contactEmail);
-            contactMessageContainers.remove(contactEmail);
+            contactTabs.remove(key);
+            contactMessageContainers.remove(key);
         });
 
-        loadConversationHistory(contactEmail, messagesBox);
+        loadConversationHistory(key, messagesBox);
         return newTab;
     }
 
@@ -302,12 +295,10 @@ public class ChatController {
             }
         }
         
-        // Ensure we're requesting with a short delay to allow connection to stabilize
+        // Request server-side history after a short delay
         new Thread(() -> {
             try {
-                // Short delay to ensure connection is fully established
                 Thread.sleep(500);
-                // Request server-side history
                 Platform.runLater(() -> requestConversationHistory(contactEmail));
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -315,8 +306,8 @@ public class ChatController {
         }).start();
     }
 
-    private void flashContactTab(String contactEmail) {
-        Tab tab = contactTabs.get(contactEmail);
+    private void flashContactTab(String key) {
+        Tab tab = contactTabs.get(key);
         if (tab != null && !tab.isSelected()) {
             tab.setStyle("-fx-background-color: #FFD700;");
         }
@@ -326,7 +317,6 @@ public class ChatController {
     private void sendMessage() {
         String messageText = messageInput.getText().trim();
         if (messageText.isEmpty()) return;
-
         if (messageText.startsWith("@")) {
             handlePrivateCommand(messageText);
         } else {
@@ -356,6 +346,7 @@ public class ChatController {
         }
     }
 
+    // Used for both one-to-one and group messages. For groups, 'recipient' is the group name.
     private void sendPrivateMessage(String recipient, String content) {
         try {
             String messageId = "msg_" + System.currentTimeMillis() + "_" +
@@ -373,9 +364,9 @@ public class ChatController {
             
             out.println(privateMsg.toString());
             
+            // Store message under the conversation key (recipient or group name)
             storeMessage(recipient, userEmail, content, true, true);
             
-            // Add with status indicator
             VBox container = contactMessageContainers.get(recipient);
             if (container != null) {
                 addOutgoingMessageToContainer(container, content, messageId);
@@ -400,9 +391,9 @@ public class ChatController {
         }
     }
 
-    private void storeMessage(String convKey, String sender, String content, boolean isPrivate, boolean isOutgoing) {
-        conversationMap.putIfAbsent(convKey, new ArrayList<>());
-        conversationMap.get(convKey).add(new MessageData(sender, content, isPrivate, isOutgoing));
+    private void storeMessage(String key, String sender, String content, boolean isPrivate, boolean isOutgoing) {
+        conversationMap.putIfAbsent(key, new ArrayList<>());
+        conversationMap.get(key).add(new MessageData(sender, content, isPrivate, isOutgoing));
     }
 
     /* ---------- UI Components ---------- */
@@ -417,25 +408,24 @@ public class ChatController {
         try {
             JSONObject msgJson = new JSONObject(message);
             String type = msgJson.getString("type");
-            
             if ("delivery_receipt".equals(type)) {
                 handleDeliveryReceipt(msgJson);
                 return;
             }
-            
             if ("read_receipt".equals(type)) {
                 handleReadReceipt(msgJson);
                 return;
             }
-            
             if ("private".equals(type)) {
                 String content = msgJson.getString("content");
-                String sender = msgJson.optString("sender", "Server");
-                
-                // Send read receipt
-                sendReadReceipt(msgJson.getString("id"), sender);
-                
-                handlePrivateMessage(sender, content);
+                if (msgJson.optBoolean("isGroup", false)) {
+                    String groupName = msgJson.getString("groupName");
+                    handleGroupMessage(groupName, msgJson.optString("sender", "Server"), content);
+                } else {
+                    String sender = msgJson.optString("sender", "Server");
+                    sendReadReceipt(msgJson.getString("id"), sender);
+                    handlePrivateMessage(sender, content);
+                }
             } else if ("broadcast".equals(type)) {
                 String content = msgJson.getString("content");
                 String sender = msgJson.optString("sender", "Server");
@@ -443,14 +433,20 @@ public class ChatController {
             } else if ("system".equals(type)) {
                 String content = msgJson.getString("content");
                 addSystemMessage(content);
-            }
-            else if ("HISTORY_RESPONSE".equals(type)) {
+            } else if ("HISTORY_RESPONSE".equals(type)) {
                 handleHistoryResponse(msgJson);
+            } else if ("group_created".equals(type)) {
+                String groupName = msgJson.getString("groupName");
+                contacts.add(groupName);
+                saveContacts();
+                refreshContactsList();
+                addSystemMessage("You have been added to group: " + groupName);
             }
         } catch (JSONException e) {
             addSystemMessage("Invalid message format: " + message);
         }
     }
+
     private void handleHistoryResponse(JSONObject response) {
         try {
             if (!response.has("messages")) {
@@ -464,7 +460,6 @@ public class ChatController {
             
             if (messagesArray.length() == 0) {
                 System.out.println("No history messages found");
-                // Remove loading indicators
                 Platform.runLater(() -> {
                     for (VBox container : contactMessageContainers.values()) {
                         container.getChildren().removeIf(node -> 
@@ -478,11 +473,10 @@ public class ChatController {
             // Group messages by conversation
             Map<String, List<JSONObject>> conversationMessages = new HashMap<>();
             
-            // First pass: categorize messages by conversation partner
+            // Categorize messages by conversation partner
             for (int i = 0; i < messagesArray.length(); i++) {
                 JSONObject messageJson = messagesArray.getJSONObject(i);
                 
-                // Skip if missing required fields
                 if (!messageJson.has("sender") || !messageJson.has("content") || 
                     !messageJson.has("type") || !messageJson.has("conversationId")) {
                     continue;
@@ -490,11 +484,8 @@ public class ChatController {
                 
                 String sender = messageJson.getString("sender");
                 String conversationId = messageJson.getString("conversationId");
-                
-                // Determine conversation partner
                 String partner;
                 if (sender.equals(userEmail)) {
-                    // This is our own message - extract recipient from conversation ID
                     if (conversationId.startsWith(userEmail + "_")) {
                         partner = conversationId.substring((userEmail + "_").length());
                     } else if (conversationId.endsWith("_" + userEmail)) {
@@ -502,66 +493,47 @@ public class ChatController {
                     } else if (conversationId.equals("broadcast")) {
                         partner = "All";
                     } else {
-                        // Default to using the first part of conversation ID
                         String[] parts = conversationId.split("_");
                         partner = parts[0].equals(userEmail) ? parts[1] : parts[0];
                     }
                 } else {
-                    // Message from someone else
                     partner = sender;
                 }
                 
-                // Add to appropriate conversation group
-                if (!conversationMessages.containsKey(partner)) {
-                    conversationMessages.put(partner, new ArrayList<>());
-                }
-                conversationMessages.get(partner).add(messageJson);
+                conversationMessages.computeIfAbsent(partner, k -> new ArrayList<>()).add(messageJson);
             }
             
-            // Second pass: display messages by conversation partner
+            // Display messages by conversation partner
             for (Map.Entry<String, List<JSONObject>> entry : conversationMessages.entrySet()) {
                 String partner = entry.getKey();
                 List<JSONObject> messages = entry.getValue();
-                
-                // Important: need final variable for lambda
-                final String contactEmail = partner;
+                final String contactKey = partner;
                 
                 Platform.runLater(() -> {
-                    // Get or create the container for this conversation
                     VBox container;
-                    
-                    if (!contactMessageContainers.containsKey(contactEmail)) {
-                        // Need to create a tab for this contact first
-                        Tab newTab = createContactTab(contactEmail);
-                        container = contactMessageContainers.get(contactEmail);
-                        
-                        // Add contact to list if not already there
-                        if (!contacts.contains(contactEmail) && !contactEmail.equals("All")) {
-                            contacts.add(contactEmail);
+                    if (!contactMessageContainers.containsKey(contactKey)) {
+                        Tab newTab = createContactTab(contactKey);
+                        container = contactMessageContainers.get(contactKey);
+                        if (!contacts.contains(contactKey) && !contactKey.equals("All")) {
+                            contacts.add(contactKey);
                             saveContacts();
                             refreshContactsList();
                         }
                     } else {
-                        container = contactMessageContainers.get(contactEmail);
-                        
-                        // Remove loading indicator if present
+                        container = contactMessageContainers.get(contactKey);
                         container.getChildren().removeIf(node -> 
-                            node instanceof Label && 
+                            node instanceof Label &&
                             ((Label)node).getText().equals("Loading conversation history..."));
                     }
                     
-                    // Display messages in this conversation
                     if (container != null) {
                         for (JSONObject messageJson : messages) {
                             try {
                                 String sender = messageJson.getString("sender");
                                 String content = messageJson.getString("content");
-                                
                                 if (sender.equals(userEmail)) {
-                                    // Our own message
                                     addOutgoingMessageToContainer(container, content);
                                 } else {
-                                    // Message from partner
                                     addIncomingMessageToContainer(container, sender, content);
                                 }
                             } catch (JSONException e) {
@@ -578,16 +550,13 @@ public class ChatController {
             Platform.runLater(() -> addSystemMessage("Error processing chat history"));
         }
     }
-    // Add method to handle delivery receipts
+
+    // Delivery receipt handling
     private void handleDeliveryReceipt(JSONObject receipt) {
         try {
             String messageId = receipt.getString("messageId");
             String status = receipt.getString("status");
-            
-            // Update UI to show message status
             Platform.runLater(() -> updateMessageStatus(messageId, status));
-            
-            // Remove from retry cache if delivered
             if ("delivered".equals(status) && networkService != null) {
                 networkService.processDeliveryReceipt(messageId);
             }
@@ -596,12 +565,10 @@ public class ChatController {
         }
     }
     
-    // Gestion des read receipts
+    // Read receipt handling
     private void handleReadReceipt(JSONObject receipt) {
         try {
             String messageId = receipt.getString("messageId");
-            String reader = receipt.getString("reader");
-            
             Platform.runLater(() -> updateMessageStatus(messageId, "read"));
         } catch (JSONException e) {
             System.err.println("Error processing read receipt: " + e.getMessage());
@@ -621,6 +588,7 @@ public class ChatController {
         }
     }
     
+    // Outgoing message with checksum/status label
     private void addOutgoingMessageToContainer(VBox container, String text, String messageId) {
         VBox messageBox = new VBox(3);
         messageBox.setAlignment(Pos.CENTER_RIGHT);
@@ -644,8 +612,15 @@ public class ChatController {
         container.getChildren().add(wrapper);
     }
     
+    // Overloaded method for displaying outgoing messages (e.g. in history)
+    private void addOutgoingMessageToContainer(VBox container, String text) {
+        HBox box = new HBox(new Label("You: " + text));
+        box.setAlignment(Pos.CENTER_RIGHT);
+        box.getStyleClass().add("bubble-right");
+        container.getChildren().add(box);
+    }
+    
     public void updateMessageStatus(String messageId, String status) {
-        // Find all status labels matching this message ID
         for (VBox container : contactMessageContainers.values()) {
             Label statusLabel = (Label) container.lookup("#status-" + messageId);
             if (statusLabel != null) {
@@ -692,7 +667,7 @@ public class ChatController {
         messageContainer.getChildren().add(box);
     }
 
-    /* ---------- Persistance des contacts ---------- */
+    /* ---------- Contacts Persistence ---------- */
     private void loadContacts() {
         String filename = CONTACTS_FILE_PREFIX + userEmail.replace("@", "_at_").replace(".", "_dot_") + ".txt";
         File file = new File(filename);
@@ -748,9 +723,6 @@ public class ChatController {
         });
     }
 
-    /**
-     * Handler for the Show Contacts button
-     */
     @FXML
     public void handleShowContactsButton(ActionEvent event) {
         List<String> sortedContacts = new ArrayList<>(contacts);
@@ -758,22 +730,16 @@ public class ChatController {
         contactsList.getItems().setAll(sortedContacts);
     }
 
-    /**
-     * Handler for the Delete Contact button
-     */
     @FXML
     public void handleDeleteContactButton(ActionEvent event) {
         String selectedContact = contactsList.getSelectionModel().getSelectedItem();
         if (selectedContact != null) {
             contacts.remove(selectedContact);
-            
-            // Remove any open tab for this contact
             Tab tab = contactTabs.remove(selectedContact);
             if (tab != null) {
                 conversationTabPane.getTabs().remove(tab);
             }
             contactMessageContainers.remove(selectedContact);
-            
             saveContacts();
             refreshContactsList();
             addSystemMessage("Contact removed: " + selectedContact);
@@ -782,12 +748,76 @@ public class ChatController {
         }
     }
     
-    /**
-     * Handler for the Logout button
-     */
+    /* ---------- Group Feature ---------- */
+    @FXML
+    public void handleCreateGroupButton(ActionEvent event) {
+        showCreateGroupDialog();
+    }
+    
+    private void showCreateGroupDialog() {
+        Stage dialogStage = new Stage();
+        dialogStage.setTitle("Create Group");
+
+        VBox vbox = new VBox(10);
+        vbox.setPadding(new Insets(15));
+
+        Label groupNameLabel = new Label("Group Name:");
+        TextField groupNameField = new TextField();
+        groupNameField.setPromptText("Enter group name...");
+
+        Label contactsLabel = new Label("Select Members:");
+        ListView<String> membersListView = new ListView<>();
+        membersListView.getItems().addAll(contacts);
+        membersListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+        Button okButton = new Button("OK");
+        okButton.setOnAction(e -> {
+            String groupName = groupNameField.getText().trim();
+            List<String> selectedMembers = new ArrayList<>(membersListView.getSelectionModel().getSelectedItems());
+            if (groupName.isEmpty()) {
+                addSystemMessage("Group name cannot be empty!");
+                return;
+            }
+            if (selectedMembers.isEmpty()) {
+                addSystemMessage("No members selected!");
+                return;
+            }
+            // Automatically add the creator if not selected
+            if (!selectedMembers.contains(userEmail)) {
+                selectedMembers.add(userEmail);
+            }
+            createGroupOnServer(groupName, selectedMembers);
+            dialogStage.close();
+        });
+
+        vbox.getChildren().addAll(groupNameLabel, groupNameField, contactsLabel, membersListView, okButton);
+
+        Scene scene = new Scene(vbox, 300, 400);
+        dialogStage.setScene(scene);
+        dialogStage.show();
+    }
+    
+    private void createGroupOnServer(String groupName, List<String> selectedMembers) {
+        try {
+            JSONObject groupRequest = new JSONObject();
+            groupRequest.put("type", "create_group");
+            groupRequest.put("groupName", groupName);
+            JSONArray membersArray = new JSONArray();
+            for (String m : selectedMembers) {
+                membersArray.put(m);
+            }
+            groupRequest.put("members", membersArray);
+            groupRequest.put("sender", userEmail);
+            out.println(groupRequest.toString());
+            addSystemMessage("Creating group on server: " + groupName);
+        } catch (JSONException e) {
+            addSystemMessage("Error creating group request: " + e.getMessage());
+        }
+    }
+    
+    /* ---------- Logout Feature ---------- */
     @FXML
     private void handleLogoutButtonAction(ActionEvent event) {
-        // Fermer la connexion socket si elle est ouverte
         if (socket != null && !socket.isClosed()) {
             try {
                 socket.close();
@@ -796,22 +826,11 @@ public class ChatController {
                 e.printStackTrace();
             }
         }
-
-
-        
-        
-        // Charger la vue de login
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/login-view.fxml"));
             Parent loginView = loader.load();
-    
-            // Créer une nouvelle scène avec la vue de login
             Scene loginScene = new Scene(loginView);
-    
-            // Récupérer la fenêtre actuelle
             Stage stage = (Stage) logoutButton.getScene().getWindow();
-    
-            // Mettre à jour le titre et la scène de la fenêtre
             stage.setTitle("Chat Application - Login");
             stage.setScene(loginScene);
             stage.show();
@@ -820,6 +839,8 @@ public class ChatController {
         }
     }
     
-
-    // La méthode launchChatUI a été supprimée car elle ne devrait pas être appelée depuis ChatController.
+    /* ---------- Deprecated/Unsupported Methods ---------- */
+    private void launchChatUI(String email, Socket socket, BufferedReader in, PrintWriter out) throws IOException {
+        throw new UnsupportedOperationException("This method should not be called from ChatController");
+    }
 }
