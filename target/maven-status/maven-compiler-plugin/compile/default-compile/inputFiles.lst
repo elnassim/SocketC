@@ -1,18 +1,34 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\network\ClientNetworkService.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\network\MessageCache.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\model\Message.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\service\DatabaseStartupService.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\SignupController.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\ChatController.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\impl\MessageDAOImpl.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\db\DatabaseUtils.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\db\DatabaseManager.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\util\MigrationTool.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\LoginController.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\handler\ClientHandler.java
+>>>>>>> feature-base-de-donnees
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\Server.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\service\UserService.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\util\MessageValidator.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\impl\ContactDAOImpl.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\repository\UserRepository.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\network\ClientNetworkService.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\network\MessageCache.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\db\DatabaseConfig.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\service\MessageService.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\model\Message.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\MessageDAO.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\impl\UserDAOImpl.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\App.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\SignupController.java
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\UserDAO.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\model\User.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\ChatController.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\service\ConversationService.java
+<<<<<<< HEAD
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\LoginController.java
 C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\handler\ClientHandler.java
 =======
@@ -51,3 +67,6 @@ C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\c
 C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\server\handler\ClientHandler.java
 C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\controller\LoginController.java
 >>>>>>> soso
+=======
+C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\ContactDAO.java
+>>>>>>> feature-base-de-donnees

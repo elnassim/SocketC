@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import com.chatapp.data.service.DatabaseStartupService;
 import com.chatapp.server.handler.ClientHandler;
 import com.chatapp.server.service.UserService;
 
@@ -14,12 +15,28 @@ public class Server {
     private static final int PORT = 1234;
     private static final List<ClientHandler> clients = Collections.synchronizedList(new ArrayList<>());
     private static UserService userService;
+    private static DatabaseStartupService dbService;
 
     public static void main(String[] args) {
+        // Initialize database
+        dbService = new DatabaseStartupService();
+        if (!dbService.initialize()) {
+            System.err.println("Failed to initialize database. Exiting server.");
+            System.exit(1);
+        }
+
         userService = new UserService();
 
         try (ServerSocket serverSocket = new ServerSocket(PORT)) {
             System.out.println("Server started on port " + PORT + ". Waiting for clients...");
+
+            // Shutdown hook for clean database shutdown
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                System.out.println("Server shutting down...");
+                if (dbService != null) {
+                    dbService.shutdown();
+                }
+            }));
 
             // Continuously accept new clients
             while (true) {
@@ -39,6 +56,11 @@ public class Server {
         } catch (IOException e) {
             System.err.println("Server error: " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            // Final cleanup
+            if (dbService != null) {
+                dbService.shutdown();
+            }
         }
     }
 
