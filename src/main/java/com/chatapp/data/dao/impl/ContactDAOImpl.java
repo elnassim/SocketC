@@ -34,6 +34,16 @@ public class ContactDAOImpl implements ContactDAO {
             return new ArrayList<>();
         }
     }
+    public static void main(String[] args) {
+        ContactDAOImpl contactDAO = new ContactDAOImpl();
+    
+        boolean result = contactDAO.addContact("sara@gmail.com", "bob@example.com");
+        if (result) {
+            System.out.println("Contact added successfully!");
+        } else {
+            System.err.println("Failed to add contact.");
+        }
+    }
 
     @Override
     public boolean addContact(String userEmail, String contactEmail) {
@@ -42,31 +52,28 @@ public class ContactDAOImpl implements ContactDAO {
             System.err.println("Cannot add non-existent contact: " + contactEmail);
             return false;
         }
-        
+    
         String query = "INSERT INTO contacts (user_email, contact_email) VALUES (?, ?)";
-        
+    
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
-            
+    
             stmt.setString(1, userEmail);
             stmt.setString(2, contactEmail);
-            
-            try {
-                int rowsAffected = stmt.executeUpdate();
-                return rowsAffected > 0;
-            } catch (SQLException e) {
-                // Ignore duplicate contacts
-                if (e.getErrorCode() == 1062) { // MySQL duplicate entry error
-                    System.out.println("Contact already exists: " + contactEmail + " for user: " + userEmail);
-                    return true;
-                } else {
-                    throw e;
-                }
-            }
+    
+            int rowsAffected = stmt.executeUpdate();
+            System.out.println("Rows affected: " + rowsAffected);
+            return rowsAffected > 0;
+    
         } catch (SQLException e) {
-            System.err.println("Database error adding contact: " + e.getMessage());
-            e.printStackTrace();
-            return false;
+            if (e.getErrorCode() == 1062) { // MySQL duplicate entry error
+                System.out.println("Contact already exists: " + contactEmail + " for user: " + userEmail);
+                return true;
+            } else {
+                System.err.println("Database error adding contact: " + e.getMessage());
+                e.printStackTrace();
+                return false;
+            }
         }
     }
 
@@ -91,21 +98,20 @@ public class ContactDAOImpl implements ContactDAO {
     
     private boolean userExists(String email) {
         String query = "SELECT COUNT(*) FROM users WHERE email = ?";
-        
+    
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
-            
+    
             stmt.setString(1, email);
             ResultSet rs = stmt.executeQuery();
-            
+    
             if (rs.next()) {
                 return rs.getInt(1) > 0;
             }
-            return false;
         } catch (SQLException e) {
-            System.err.println("Database error checking if user exists: " + e.getMessage());
+            System.err.println("Database error checking user existence: " + e.getMessage());
             e.printStackTrace();
-            return false;
         }
+        return false;
     }
 }

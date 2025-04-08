@@ -23,6 +23,8 @@ import java.net.Socket;
 import java.util.*;
 
 import com.chatapp.common.model.User;
+import com.chatapp.data.dao.ContactDAO;
+import com.chatapp.data.dao.impl.ContactDAOImpl;
 import com.chatapp.client.network.ClientNetworkService;
 
 /**
@@ -668,25 +670,7 @@ public class ChatController {
     }
 
     /* ---------- Contacts Persistence ---------- */
-    private void loadContacts() {
-        String filename = CONTACTS_FILE_PREFIX + userEmail.replace("@", "_at_").replace(".", "_dot_") + ".txt";
-        File file = new File(filename);
-        if (file.exists()) {
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (!line.trim().isEmpty()) {
-                        contacts.add(line.trim());
-                    }
-                }
-                addSystemMessage("Contacts loaded successfully.");
-            } catch (IOException e) {
-                addSystemMessage("Error loading contacts: " + e.getMessage());
-            }
-        } else {
-            addSystemMessage("No previous contacts found.");
-        }
-    }
+   
 
     private void saveContacts() {
         String filename = CONTACTS_FILE_PREFIX + userEmail.replace("@", "_at_").replace(".", "_dot_") + ".txt";
@@ -702,6 +686,18 @@ public class ChatController {
     private void refreshContactsList() {
         contactsList.getItems().setAll(contacts);
     }
+    private final ContactDAO contactDAO = new ContactDAOImpl();
+
+    @FXML
+    private void loadContacts() {
+        try {
+            contacts.clear();
+            contacts.addAll(contactDAO.getContacts(userEmail));
+            refreshContactsList();
+        } catch (Exception e) {
+            addSystemMessage("Error loading contacts: " + e.getMessage());
+        }
+    }
 
     @FXML
     public void handleAddContactButton(ActionEvent event) {
@@ -713,15 +709,20 @@ public class ChatController {
         Optional<String> result = dialog.showAndWait();
         result.ifPresent(email -> {
             if (email.contains("@") && !email.equals(userEmail)) {
-                contacts.add(email);
-                saveContacts();
-                refreshContactsList();
-                addSystemMessage("Contact added: " + email);
+                boolean success = contactDAO.addContact(userEmail, email);
+                if (success) {
+                    contacts.add(email);
+                    refreshContactsList();
+                    addSystemMessage("Contact added: " + email);
+                } else {
+                    addSystemMessage("Failed to add contact: " + email);
+                }
             } else {
-                addSystemMessage("Invalid email address");
+                addSystemMessage("Invalid email address.");
             }
         });
     }
+
 
     @FXML
     public void handleShowContactsButton(ActionEvent event) {
@@ -734,17 +735,16 @@ public class ChatController {
     public void handleDeleteContactButton(ActionEvent event) {
         String selectedContact = contactsList.getSelectionModel().getSelectedItem();
         if (selectedContact != null) {
-            contacts.remove(selectedContact);
-            Tab tab = contactTabs.remove(selectedContact);
-            if (tab != null) {
-                conversationTabPane.getTabs().remove(tab);
+            boolean success = contactDAO.removeContact(userEmail, selectedContact);
+            if (success) {
+                contacts.remove(selectedContact);
+                refreshContactsList();
+                addSystemMessage("Contact removed: " + selectedContact);
+            } else {
+                addSystemMessage("Failed to remove contact: " + selectedContact);
             }
-            contactMessageContainers.remove(selectedContact);
-            saveContacts();
-            refreshContactsList();
-            addSystemMessage("Contact removed: " + selectedContact);
         } else {
-            addSystemMessage("No contact selected");
+            addSystemMessage("No contact selected.");
         }
     }
     

@@ -1,72 +1,30 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\network\ClientNetworkService.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\network\MessageCache.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\model\Message.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\service\DatabaseStartupService.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\SignupController.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\ChatController.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\impl\MessageDAOImpl.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\db\DatabaseUtils.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\db\DatabaseManager.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\util\MigrationTool.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\LoginController.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\handler\ClientHandler.java
->>>>>>> feature-base-de-donnees
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\Server.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\service\UserService.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\util\MessageValidator.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\impl\ContactDAOImpl.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\repository\UserRepository.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\db\DatabaseConfig.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\service\MessageService.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\MessageDAO.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\impl\UserDAOImpl.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\App.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\UserDAO.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\common\model\User.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\service\ConversationService.java
-<<<<<<< HEAD
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\client\controller\LoginController.java
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\server\handler\ClientHandler.java
-=======
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\server\Server.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\client\controller\LoginController.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\client\controller\SignupController.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\server\service\UserService.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\server\handler\ClientHandler.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\common\model\Message.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\server\service\MessageService.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\client\network\MessageCache.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\data\repository\UserRepository.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\common\util\MessageValidator.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\client\App.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\client\network\ClientNetworkService.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\client\controller\ChatController.java
-C:\Users\Administrateur\Desktop\projetReseau\SocketC\src\main\java\com\chatapp\common\model\User.java
->>>>>>> manal
-=======
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\controller\CreateGroupController.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\common\model\User.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\server\service\GroupService.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\network\ClientNetworkService.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\common\util\MessageValidator.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\network\MessageCache.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\server\service\MessageService.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\server\service\UserService.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\controller\ChatController.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\data\repository\UserRepository.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\controller\CheckBoxListCell.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\common\model\Group.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\common\model\Message.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\server\Server.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\App.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\controller\SignupController.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\server\handler\ClientHandler.java
-C:\Users\Sara KRICHI\Desktop\socketcc\SocketC\src\main\java\com\chatapp\client\controller\LoginController.java
->>>>>>> soso
-=======
-C:\Users\ASUS\Documents\S8\Socket-Reseau\SocketProject\SocketProject\src\main\java\com\chatapp\data\dao\ContactDAO.java
->>>>>>> feature-base-de-donnees
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\server\service\GroupService.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\server\handler\ClientHandler.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\controller\ChatController.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\controller\SignupController.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\common\model\Message.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\dao\impl\ContactDAOImpl.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\server\service\MessageService.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\server\service\ConversationService.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\network\ClientNetworkService.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\service\DatabaseStartupService.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\controller\CheckBoxListCell.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\common\model\User.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\util\MigrationTool.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\server\service\UserService.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\App.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\db\DatabaseConfig.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\dao\ContactDAO.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\controller\LoginController.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\dao\impl\UserDAOImpl.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\db\DatabaseManager.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\dao\MessageDAO.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\dao\UserDAO.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\common\util\MessageValidator.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\common\model\Group.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\controller\CreateGroupController.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\db\DatabaseUtils.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\dao\impl\MessageDAOImpl.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\server\Server.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\data\repository\UserRepository.java
+C:\xampp\htdocs\socketcc\tach-msg\SocketC\src\main\java\com\chatapp\client\network\MessageCache.java
