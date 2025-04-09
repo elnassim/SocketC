@@ -2,7 +2,6 @@ package com.chatapp.server.service;
 
 import org.json.JSONObject;
 import com.chatapp.common.model.Message;
-
 import java.util.*;
 import java.io.*;
 
@@ -16,8 +15,8 @@ public class MessageService {
 
     public MessageService() {
         this.conversationService = new ConversationService();
-          // Add logging to verify initialization
-    System.out.println("MessageService initialized with ConversationService");
+        // Add logging to verify initialization
+        System.out.println("MessageService initialized with ConversationService");
     }
 
     /**
@@ -33,10 +32,10 @@ public class MessageService {
     public JSONObject createPrivateMessage(String sender, String recipient, String content) {
         Message message = new Message(sender, content, "private");
         message.setConversationParticipants(sender, recipient);
-        
-        // Store in conversation history
+
+        // Store in conversation history via DB
         conversationService.saveMessage(message);
-        
+
         return message.toJson();
     }
 
@@ -46,10 +45,10 @@ public class MessageService {
     public JSONObject createBroadcastMessage(String sender, String content) {
         Message message = new Message(sender, content, "broadcast");
         message.setConversationId("broadcast");
-        
-        // Store in conversation history
+
+        // Store in conversation history via DB
         conversationService.saveMessage(message);
-        
+
         return message.toJson();
     }
 
@@ -59,8 +58,8 @@ public class MessageService {
     public void storeOfflineMessage(String recipient, JSONObject message) {
         offlineMessages.computeIfAbsent(recipient, k -> new ArrayList<>());
         offlineMessages.get(recipient).add(message.toString());
-        
-        // Also save to conversation history
+
+        // Also save to conversation history via DB
         try {
             Message msgObj = Message.fromJson(message);
             conversationService.saveMessage(msgObj);
@@ -79,7 +78,7 @@ public class MessageService {
     }
     
     /**
-     * Get message history between users
+     * Get message history between users from the DB
      */
     public List<JSONObject> getMessageHistory(String user1, String user2) {
         return conversationService.getConversationHistory(user1, user2);

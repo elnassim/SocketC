@@ -7,40 +7,29 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import com.chatapp.common.model.Message;
+import com.chatapp.data.dao.MessageDAO;
+import com.chatapp.data.dao.impl.MessageDAOImpl;
 
 /**
- * Service to handle conversation persistence and retrieval
+ * Service to handle conversation persistence and retrieval using Database Storage.
  */
 public class ConversationService {
-    private static final String CONVERSATIONS_DIR = "data/conversations/";
-    private static final int HISTORY_LIMIT = 50;  // Maximum messages per conversation
+    
+    // Note: Les méthodes relatives au stockage sur fichier (loadHistory, saveToFile) 
+    // sont conservées ici pour référence, mais ne seront plus utilisées dans la nouvelle version.
+    // La méthode generateConversationId reste inchangée.
     
     /**
-     * Constructor that ensures the conversations directory exists
+     * Constructor that initializes the ConversationService.
      */
     public ConversationService() {
-        System.out.println("DEBUG: Initializing ConversationService");
-        System.out.println("DEBUG: Working directory: " + new File(".").getAbsolutePath());
-        
-        // Ensure conversations directory exists
-        try {
-            File dir = new File(CONVERSATIONS_DIR);
-            if (!dir.exists()) {
-                boolean created = dir.mkdirs();
-                System.out.println("DEBUG: Created conversations directory: " + created);
-                System.out.println("DEBUG: Path: " + dir.getAbsolutePath());
-            } else {
-                System.out.println("DEBUG: Using existing conversations directory: " + dir.getAbsolutePath());
-                System.out.println("DEBUG: Directory is writable: " + dir.canWrite());
-            }
-        } catch (Exception e) {
-            System.err.println("Error creating conversations directory: " + e.getMessage());
-            e.printStackTrace();
-        }
+        // Vous pouvez conserver un message de debug pour vérifier l'initialisation.
+        System.out.println("DEBUG: Initializing ConversationService for DB storage");
     }
     
     /**
-     * Save a message to conversation history
+     * Save a message to conversation history directly in the database.
+     * (Ancienne version basée sur les fichiers JSON remplacée par un appel direct au DAO.)
      */
     public void saveMessage(Message message) {
         if (message.getConversationId() == null) {
@@ -48,34 +37,29 @@ public class ConversationService {
             return;
         }
         
-        String filename = CONVERSATIONS_DIR + message.getConversationId() + ".json";
-        List<JSONObject> history = loadHistory(filename);
-        
-        
-        history.add(message.toJson());
-        
-        // Keep history within size limit
-        if (history.size() > HISTORY_LIMIT) {
-            history = history.subList(history.size() - HISTORY_LIMIT, history.size());
+        MessageDAO messageDAO = new MessageDAOImpl();
+        if (messageDAO.save(message)) {
+            System.out.println("Message saved into DB for conversation " + message.getConversationId());
+        } else {
+            System.err.println("Error saving message into DB for conversation " + message.getConversationId());
         }
-        
-        saveToFile(filename, history);
     }
     
     /**
-     * Load conversation history between users
+     * Load conversation history between two users from the database.
+     * (Remplace l’ancienne lecture des fichiers JSON.)
      */
     public List<JSONObject> getConversationHistory(String user1, String user2) {
-        String conversationId = generateConversationId(user1, user2);
-        String filename = CONVERSATIONS_DIR + conversationId + ".json";
-        return loadHistory(filename);
+        MessageDAO messageDAO = new MessageDAOImpl();
+        return messageDAO.getConversationHistory(user1, user2);
     }
     
     /**
-     * Generate a conversation ID from two user emails
+     * Generate a conversation ID from two user emails.
+     * Cette méthode reste inchangée.
      */
     public String generateConversationId(String user1, String user2) {
-        // Sort emails to ensure consistent ID regardless of order
+        // Tri des emails pour garantir un ID constant quel que soit l’ordre.
         if (user1.compareTo(user2) > 0) {
             String temp = user1;
             user1 = user2;
@@ -84,8 +68,10 @@ public class ConversationService {
         return user1 + "_" + user2;
     }
     
+    // --- Anciennes méthodes pour le stockage en fichier (non utilisées dans la version DB) ---
+    
     /**
-     * Load conversation history from file
+     * Load conversation history from file. (Deprecated for DB storage)
      */
     private List<JSONObject> loadHistory(String filename) {
         File file = new File(filename);
@@ -112,7 +98,7 @@ public class ConversationService {
             return new ArrayList<>();
         } catch (JSONException e) {
             System.err.println("Error parsing conversation file: " + e.getMessage());
-            // If there's a parsing error, backup the problematic file
+            // En cas d'erreur, sauvegarder une copie de sauvegarde
             try {
                 File backup = new File(filename + ".bak");
                 Files.copy(Paths.get(filename), new FileOutputStream(backup));
@@ -125,7 +111,7 @@ public class ConversationService {
     }
     
     /**
-     * Save conversation history to file
+     * Save conversation history to file. (Deprecated for DB storage)
      */
     private void saveToFile(String filename, List<JSONObject> messages) {
         try {
@@ -137,7 +123,7 @@ public class ConversationService {
             System.out.println("DEBUG: Saving to file: " + filename);
             System.out.println("DEBUG: Content size: " + jsonArray.toString().length() + " bytes");
             
-            // Create parent directories if they don't exist
+            // Création du répertoire parent si nécessaire
             File file = new File(filename);
             if (!file.getParentFile().exists()) {
                 boolean created = file.getParentFile().mkdirs();
@@ -146,7 +132,6 @@ public class ConversationService {
             
             Files.write(Paths.get(filename), jsonArray.toString().getBytes());
             
-            // Verify the file exists and has content
             File savedFile = new File(filename);
             if (savedFile.exists()) {
                 System.out.println("DEBUG: File saved successfully, size: " + savedFile.length() + " bytes");
