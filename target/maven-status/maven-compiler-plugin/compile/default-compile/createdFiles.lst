@@ -8,6 +8,7 @@ com\chatapp\data\dao\UserDAO.class
 com\chatapp\data\dao\impl\ContactDAOImpl.class
 com\chatapp\common\model\Group.class
 com\chatapp\common\util\MessageValidator.class
+com\chatapp\client\controller\ProfileController.class
 com\chatapp\data\dao\impl\UserDAOImpl.class
 com\chatapp\data\dao\impl\MessageDAOImpl.class
 com\chatapp\client\network\MessageCache.class

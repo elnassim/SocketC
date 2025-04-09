@@ -17,6 +17,20 @@
             fx:controller="com.chatapp.client.controller.ChatController"
             stylesheets="@../styles.css">
 
+    <!-- Zone supérieure: ajout du bouton Profil -->
+    <top>
+        <HBox spacing="10" alignment="CENTER_RIGHT">
+            <!-- Définition correcte du padding -->
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10" />
+            </padding>
+            <Button fx:id="profileButton"
+                    text="Profil"
+                    onAction="#handleProfile"
+                    styleClass="primary-button" />
+        </HBox>
+    </top>
+
     <!-- Panneau gauche : liste des contacts et boutons -->
     <left>
         <VBox styleClass="contacts-panel">
@@ -24,11 +38,11 @@
                 <Label text="Chats" styleClass="contacts-header-label"/>
             </HBox>
             <HBox styleClass="chat-header">
-                    <Label fx:id="contactNameLabel" text="Conversations" 
-                    styleClass="chat-header-label"/>
-                    <Button fx:id="logoutButton" text="Logout" 
-                    onAction="#handleLogoutButtonAction" 
-                    styleClass="primary-button" />
+                <Label fx:id="contactNameLabel" text="Conversations" 
+                       styleClass="chat-header-label"/>
+                <Button fx:id="logoutButton" text="Logout" 
+                        onAction="#handleLogoutButtonAction" 
+                        styleClass="primary-button" />
             </HBox>
 
             <HBox styleClass="contacts-search">

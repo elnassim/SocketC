@@ -7,8 +7,7 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -26,6 +25,9 @@ import com.chatapp.common.model.User;
 import com.chatapp.data.dao.ContactDAO;
 import com.chatapp.data.dao.impl.ContactDAOImpl;
 import com.chatapp.client.network.ClientNetworkService;
+
+// Import du contrôleur de profil pour accéder à la méthode initData()
+import com.chatapp.client.controller.ProfileController;
 
 /**
  * Main controller for the chat application with conversation tabs.
@@ -46,6 +48,8 @@ public class ChatController {
     @FXML private TabPane conversationTabPane;
     @FXML private Button logoutButton;
     @FXML private Button createGroupButton;
+    // Bouton Profil tel que défini dans chat-view.fxml
+    @FXML private Button profileButton;
 
     /* ---------- Internal Fields ---------- */
     private String userEmail;
@@ -108,7 +112,33 @@ public class ChatController {
             });
         });
     }
+    
+    /**
+     * Nouvelle méthode pour ouvrir la vue de gestion du profil.
+     * Elle charge le fichier FXML, récupère le contrôleur, transmet l'email de l'utilisateur et affiche la fenêtre.
+     */
+    @FXML
+    private void handleProfile(ActionEvent event) {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/profile-view.fxml"));
+            Parent profileRoot = loader.load();
+            // Récupère le contrôleur associé et initialise les données du profil.
+            ProfileController profileController = loader.getController();
+            profileController.initData(userEmail);
+            Scene profileScene = new Scene(profileRoot);
+            Stage profileStage = new Stage();
+            profileStage.setTitle("Gestion du profil");
+            profileStage.setScene(profileScene);
+            profileStage.show();
+        } catch (IOException e) {
+            e.printStackTrace();
+            addSystemMessage("Erreur lors de l'ouverture de la vue de profil.");
+        }
+    }
 
+    /**
+     * Initialise la session de chat et configure la connexion.
+     */
     public void initChatSession(String email, Socket socket, BufferedReader in, PrintWriter out) {
         this.userEmail = email;
         this.socket = socket;
@@ -280,15 +310,11 @@ public class ChatController {
     }
 
     private void loadConversationHistory(String contactEmail, VBox container) {
-        // First see if we have local cache
         List<MessageData> localHistory = conversationMap.getOrDefault(contactEmail, new ArrayList<>());
-        
-        // Add loading indicator
         Label loadingLabel = new Label("Loading conversation history...");
         loadingLabel.setStyle("-fx-text-fill: #757575; -fx-font-style: italic;");
         container.getChildren().add(loadingLabel);
         
-        // Display any local cache we have for immediate feedback
         for (MessageData msg : localHistory) {
             if (msg.isOutgoing) {
                 addOutgoingMessageToContainer(container, msg.content);
@@ -297,7 +323,6 @@ public class ChatController {
             }
         }
         
-        // Request server-side history after a short delay
         new Thread(() -> {
             try {
                 Thread.sleep(500);
@@ -348,7 +373,6 @@ public class ChatController {
         }
     }
 
-    // Used for both one-to-one and group messages. For groups, 'recipient' is the group name.
     private void sendPrivateMessage(String recipient, String content) {
         try {
             String messageId = "msg_" + System.currentTimeMillis() + "_" +
@@ -361,12 +385,9 @@ public class ChatController {
             privateMsg.put("sender", userEmail);
             privateMsg.put("id", messageId);
             
-            // Use the message validator to add integrity check
             privateMsg = com.chatapp.common.util.MessageValidator.addChecksum(privateMsg);
-            
             out.println(privateMsg.toString());
             
-            // Store message under the conversation key (recipient or group name)
             storeMessage(recipient, userEmail, content, true, true);
             
             VBox container = contactMessageContainers.get(recipient);
@@ -472,10 +493,8 @@ public class ChatController {
                 return;
             }
     
-            // Group messages by conversation
             Map<String, List<JSONObject>> conversationMessages = new HashMap<>();
             
-            // Categorize messages by conversation partner
             for (int i = 0; i < messagesArray.length(); i++) {
                 JSONObject messageJson = messagesArray.getJSONObject(i);
                 
@@ -505,7 +524,6 @@ public class ChatController {
                 conversationMessages.computeIfAbsent(partner, k -> new ArrayList<>()).add(messageJson);
             }
             
-            // Display messages by conversation partner
             for (Map.Entry<String, List<JSONObject>> entry : conversationMessages.entrySet()) {
                 String partner = entry.getKey();
                 List<JSONObject> messages = entry.getValue();
@@ -553,7 +571,6 @@ public class ChatController {
         }
     }
 
-    // Delivery receipt handling
     private void handleDeliveryReceipt(JSONObject receipt) {
         try {
             String messageId = receipt.getString("messageId");
@@ -567,7 +584,6 @@ public class ChatController {
         }
     }
     
-    // Read receipt handling
     private void handleReadReceipt(JSONObject receipt) {
         try {
             String messageId = receipt.getString("messageId");
@@ -577,7 +593,6 @@ public class ChatController {
         }
     }
     
-    // Envoi d'un read receipt
     private void sendReadReceipt(String messageId, String sender) {
         try {
             JSONObject readReceipt = new JSONObject();
@@ -590,7 +605,6 @@ public class ChatController {
         }
     }
     
-    // Outgoing message with checksum/status label
     private void addOutgoingMessageToContainer(VBox container, String text, String messageId) {
         VBox messageBox = new VBox(3);
         messageBox.setAlignment(Pos.CENTER_RIGHT);
@@ -614,7 +628,6 @@ public class ChatController {
         container.getChildren().add(wrapper);
     }
     
-    // Overloaded method for displaying outgoing messages (e.g. in history)
     private void addOutgoingMessageToContainer(VBox container, String text) {
         HBox box = new HBox(new Label("You: " + text));
         box.setAlignment(Pos.CENTER_RIGHT);
@@ -671,7 +684,6 @@ public class ChatController {
 
     /* ---------- Contacts Persistence ---------- */
    
-
     private void saveContacts() {
         String filename = CONTACTS_FILE_PREFIX + userEmail.replace("@", "_at_").replace(".", "_dot_") + ".txt";
         try (PrintWriter writer = new PrintWriter(new FileWriter(filename))) {
@@ -722,7 +734,6 @@ public class ChatController {
             }
         });
     }
-
 
     @FXML
     public void handleShowContactsButton(ActionEvent event) {
@@ -782,7 +793,6 @@ public class ChatController {
                 addSystemMessage("No members selected!");
                 return;
             }
-            // Automatically add the creator if not selected
             if (!selectedMembers.contains(userEmail)) {
                 selectedMembers.add(userEmail);
             }

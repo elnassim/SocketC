@@ -29,10 +29,12 @@ public class ClientNetworkService {
     private boolean connected = false;
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
+    private static ClientNetworkService instance;
 
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
+    
 
     /**
      * Connect to the server and authenticate
@@ -61,6 +63,12 @@ public class ClientNetworkService {
         } catch (ConnectException e) {
             throw new IOException("Failed to connect to server. Is the server running?");
         }
+    }
+    public static ClientNetworkService getInstance() {
+        if (instance == null) {
+            instance = new ClientNetworkService();
+        }
+        return instance;
     }
     
     public void initRetryMechanism() {
@@ -106,7 +114,22 @@ public class ClientNetworkService {
             out.println(message);
         }
     }
+    public boolean updateProfile(String displayName, String photoURL, String status) {
+        try {
+            // Construction de la chaîne de requête avec le séparateur '|'
+            String request = "UPDATE_PROFILE|" + displayName + "|" + photoURL + "|" + status;
+            // Envoi de la requête au serveur
+            out.println(request);
+            out.flush();
 
+            // Lecture de la réponse du serveur (par exemple, "OK" ou "KO")
+            String response = in.readLine();
+            return "OK".equals(response);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
     /**
      * Close the connection to the server
      */

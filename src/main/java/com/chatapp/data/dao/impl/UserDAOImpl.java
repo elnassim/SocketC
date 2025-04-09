@@ -18,7 +18,7 @@ public class UserDAOImpl implements UserDAO {
         String query = "SELECT * FROM users WHERE email = ?";
 
         try (Connection conn = DatabaseManager.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(query)) {
+             PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setString(1, email);
             ResultSet rs = stmt.executeQuery();
@@ -41,7 +41,7 @@ public class UserDAOImpl implements UserDAO {
         String query = "SELECT password FROM users WHERE email = ?";
 
         try (Connection conn = DatabaseManager.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(query)) {
+             PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setString(1, email);
             ResultSet rs = stmt.executeQuery();
@@ -62,7 +62,7 @@ public class UserDAOImpl implements UserDAO {
         String query = "INSERT INTO users (email, username, password) VALUES (?, ?, ?)";
 
         try (Connection conn = DatabaseManager.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(query)) {
+             PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setString(1, user.getEmail());
             stmt.setString(2, user.getUsername());
@@ -82,8 +82,8 @@ public class UserDAOImpl implements UserDAO {
         List<User> users = new ArrayList<>();
 
         try (Connection conn = DatabaseManager.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(query);
-                ResultSet rs = stmt.executeQuery()) {
+             PreparedStatement stmt = conn.prepareStatement(query);
+             ResultSet rs = stmt.executeQuery()) {
 
             while (rs.next()) {
                 String username = rs.getString("username");
@@ -110,7 +110,7 @@ public class UserDAOImpl implements UserDAO {
         String query = "UPDATE users SET username = ?, password = ? WHERE email = ?";
 
         try (Connection conn = DatabaseManager.getConnection();
-                PreparedStatement stmt = conn.prepareStatement(query)) {
+             PreparedStatement stmt = conn.prepareStatement(query)) {
 
             stmt.setString(1, user.getUsername());
             stmt.setString(2, user.getPassword());
@@ -214,6 +214,37 @@ public class UserDAOImpl implements UserDAO {
                     System.err.println("Error resetting connection state: " + e.getMessage());
                 }
             }
+        }
+    }
+
+    // --- Méthode ajoutée pour mettre à jour le profil (username, password, profile_image) ---
+    @Override
+    public boolean updateUserProfile(User user) {
+        // First check if user exists
+        if (findByEmail(user.getEmail()) == null) {
+            System.err.println("Cannot update profile of non-existent user: " + user.getEmail());
+            return false;
+        }
+
+        String query = "UPDATE users SET username = ?, password = ?, ProfilePhoto = ? WHERE email = ?";
+
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+
+            stmt.setString(1, user.getUsername());
+            stmt.setString(2, user.getPassword());
+            stmt.setString(3, user.getProfilePhoto());
+            stmt.setString(4, user.getEmail());
+
+            int rowsAffected = stmt.executeUpdate();
+            if (rowsAffected > 0) {
+                System.out.println("User profile updated successfully: " + user.getEmail());
+            }
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.err.println("Error updating user profile: " + e.getMessage());
+            e.printStackTrace();
+            return false;
         }
     }
 }
