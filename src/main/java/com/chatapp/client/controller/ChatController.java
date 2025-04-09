@@ -11,7 +11,6 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.layout.Priority;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -96,6 +95,7 @@ public class ChatController {
                 newTab.setStyle("");
             }
         });
+        Platform.runLater(this::loadGroups);
     
         // Handle window close event to cleanly close socket connection
         Platform.runLater(() -> {
@@ -156,6 +156,7 @@ public class ChatController {
         }
     
         loadContacts();
+        loadGroups();
         refreshContactsList();
         addSystemMessage("Connected as " + userEmail);
         startMessageListener();
@@ -222,6 +223,16 @@ public class ChatController {
             addIncomingMessageToContainer(contactMessageContainers.get(groupName), sender, content);
             flashContactTab(groupName);
         });
+    }
+
+    public void loadGroups() {
+        try {
+            JSONObject request = new JSONObject();
+            request.put("type", "get_groups");
+            networkService.sendMessage(request.toString());
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
     }
 
     private void handleBroadcastMessage(String sender, String content) {
@@ -460,10 +471,40 @@ public class ChatController {
                 handleHistoryResponse(msgJson);
             } else if ("group_created".equals(type)) {
                 String groupName = msgJson.getString("groupName");
-                contacts.add(groupName);
-                saveContacts();
-                refreshContactsList();
-                addSystemMessage("You have been added to group: " + groupName);
+                System.out.println("Group created: " + groupName);
+                
+                Platform.runLater(() -> {
+                    if (!contacts.contains(groupName)) {
+                        contacts.add(groupName);
+                        saveContacts(); // If you're using local storage
+                        refreshContactsList();
+                        addSystemMessage("You've been added to group: " + groupName);
+                    }
+                });
+            }
+            else if ("groups_list".equals(type)) {
+                System.out.println("Received groups list from server");
+                JSONArray groupsArray = msgJson.getJSONArray("groups");
+                System.out.println("Found " + groupsArray.length() + " groups");
+                
+                Platform.runLater(() -> {
+                    for (int i = 0; i < groupsArray.length(); i++) {
+                        try {
+                            JSONObject groupJson = groupsArray.getJSONObject(i);
+                            String groupName = groupJson.getString("name");
+                            System.out.println("Adding group to contacts: " + groupName);
+                            
+                            if (!contacts.contains(groupName)) {
+                                contacts.add(groupName);
+                            }
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    
+                    saveContacts(); // If you're saving contacts locally
+                    refreshContactsList();
+                });
             }
         } catch (JSONException e) {
             addSystemMessage("Invalid message format: " + message);
@@ -705,7 +746,9 @@ public class ChatController {
         try {
             contacts.clear();
             contacts.addAll(contactDAO.getContacts(userEmail));
+            loadGroups();
             refreshContactsList();
+            
         } catch (Exception e) {
             addSystemMessage("Error loading contacts: " + e.getMessage());
         }
