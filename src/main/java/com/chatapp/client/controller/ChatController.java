@@ -92,6 +92,7 @@ public class ChatController {
                 newTab.setStyle("");
             }
         });
+        Platform.runLater(this::loadGroups);
     
         // Handle window close event to cleanly close socket connection
         Platform.runLater(() -> {
@@ -192,6 +193,16 @@ public class ChatController {
             addIncomingMessageToContainer(contactMessageContainers.get(groupName), sender, content);
             flashContactTab(groupName);
         });
+    }
+
+    public void loadGroups() {
+        try {
+            JSONObject request = new JSONObject();
+            request.put("type", "get_groups");
+            networkService.sendMessage(request.toString());
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
     }
 
     private void handleBroadcastMessage(String sender, String content) {
@@ -439,10 +450,16 @@ public class ChatController {
                 handleHistoryResponse(msgJson);
             } else if ("group_created".equals(type)) {
                 String groupName = msgJson.getString("groupName");
-                contacts.add(groupName);
-                saveContacts();
-                refreshContactsList();
-                addSystemMessage("You have been added to group: " + groupName);
+                System.out.println("Received group_created notification for group: " + groupName);
+                
+                Platform.runLater(() -> {
+                    if (!contacts.contains(groupName)) {
+                        contacts.add(groupName);
+                        saveContacts();
+                        refreshContactsList();
+                        addSystemMessage("You have been added to group: " + groupName);
+                    }
+                });
             }
         } catch (JSONException e) {
             addSystemMessage("Invalid message format: " + message);
