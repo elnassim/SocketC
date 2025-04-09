@@ -155,8 +155,14 @@ public class ChatController {
             addSystemMessage("Error initializing message retry system: " + e.getMessage());
         }
     
+        // Load contacts first (this has to work before loadGroups)
         loadContacts();
+        
+        // Add this explicit call to load groups after the socket is initialized
+        System.out.println("Loading groups for user: " + email);
         loadGroups();
+        
+        // Refresh UI
         refreshContactsList();
         addSystemMessage("Connected as " + userEmail);
         startMessageListener();
@@ -165,11 +171,26 @@ public class ChatController {
     private void startMessageListener() {
         new Thread(() -> {
             try {
+                // Load groups again after a short delay to ensure connection is ready
+                Thread.sleep(1000);
+                Platform.runLater(() -> {
+                    try {
+                        System.out.println("Requesting groups list after connection startup");
+                        JSONObject request = new JSONObject();
+                        request.put("type", "get_groups");
+                        out.println(request.toString());
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                });
+                
                 String line;
                 while (connected && (line = in.readLine()) != null) {
                     final String receivedMsg = line;
                     Platform.runLater(() -> handleIncomingMessage(receivedMsg));
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (IOException e) {
                 if (connected) {
                     Platform.runLater(() -> addSystemMessage("Connection lost: " + e.getMessage()));
@@ -227,10 +248,12 @@ public class ChatController {
 
     public void loadGroups() {
         try {
+            System.out.println("Requesting groups from server...");
             JSONObject request = new JSONObject();
             request.put("type", "get_groups");
-            networkService.sendMessage(request.toString());
+            out.println(request.toString()); 
         } catch (JSONException e) {
+            System.err.println("Error requesting groups: " + e.getMessage());
             e.printStackTrace();
         }
     }
