@@ -10,4 +10,7 @@ public interface UserDAO {
     List<User> findAll();
     boolean update(User user);
     boolean delete(String email);
+    
+    // Méthode ajoutée pour mettre à jour le profil de l'utilisateur (username, password et profileImage)
+    boolean updateUserProfile(User user);
 }
