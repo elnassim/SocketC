@@ -63,3 +63,20 @@ CREATE TABLE IF NOT EXISTS group_members (
     FOREIGN KEY (group_id) REFERENCES user_groups(id),
     FOREIGN KEY (user_email) REFERENCES users(email)
 );
+
+-- Table to store file metadata
+CREATE TABLE IF NOT EXISTS files (
+    id VARCHAR(36) PRIMARY KEY,  -- UUID for the file
+    sender_email VARCHAR(255) NOT NULL,
+    conversation_id VARCHAR(255) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL,  -- Original name of the file
+    stored_path VARCHAR(255) NOT NULL,        -- Server-side storage path
+    mime_type VARCHAR(100) NOT NULL,          -- File type (image/jpeg, application/pdf, etc.)
+    file_size BIGINT NOT NULL,                -- Size in bytes
+    timestamp BIGINT NOT NULL,                -- When the file was sent
+    delivered BOOLEAN DEFAULT FALSE,
+    viewed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id),
+    FOREIGN KEY (sender_email) REFERENCES users(email)
+);

@@ -11,6 +11,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class MessageDAOImpl implements MessageDAO {
@@ -46,42 +47,70 @@ public class MessageDAOImpl implements MessageDAO {
         }
     }
 
-    @Override
-    public List<JSONObject> getConversationHistory(String user1, String user2) {
-        // Generate conversation ID using the same algorithm as in ConversationService
-        String conversationId = generateConversationId(user1, user2);
+    // In MessageDAOImpl.java, update getConversationHistory method:
+
+@Override
+public List<JSONObject> getConversationHistory(String user1, String user2) {
+    // Generate conversation ID using the same algorithm as in ConversationService
+    String conversationId = generateConversationId(user1, user2);
+    List<JSONObject> messages = new ArrayList<>();
+    
+    // Get text messages
+    String textQuery = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC";
+    try (Connection conn = DatabaseManager.getConnection();
+         PreparedStatement stmt = conn.prepareStatement(textQuery)) {
         
-        String query = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC";
-        List<JSONObject> messages = new ArrayList<>();
+        stmt.setString(1, conversationId);
+        ResultSet rs = stmt.executeQuery();
         
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
+        while (rs.next()) {
+            JSONObject message = new JSONObject();
+            message.put("id", rs.getString("id"));
+            message.put("sender", rs.getString("sender_email"));
+            message.put("conversationId", rs.getString("conversation_id"));
+            message.put("content", rs.getString("content"));
+            message.put("type", rs.getString("type"));
+            message.put("status", rs.getString("status"));
+            message.put("timestamp", rs.getLong("timestamp"));
+            message.put("delivered", rs.getBoolean("delivered"));
+            message.put("read", rs.getBoolean("read_status"));
             
-            stmt.setString(1, conversationId);
-            ResultSet rs = stmt.executeQuery();
-            
-            while (rs.next()) {
-                JSONObject message = new JSONObject();
-                message.put("id", rs.getString("id"));
-                message.put("sender", rs.getString("sender_email"));
-                message.put("conversationId", rs.getString("conversation_id"));
-                message.put("content", rs.getString("content"));
-                message.put("type", rs.getString("type"));
-                message.put("status", rs.getString("status"));
-                message.put("timestamp", rs.getLong("timestamp"));
-                message.put("delivered", rs.getBoolean("delivered"));
-                message.put("read", rs.getBoolean("read_status"));
-                
-                messages.add(message);
-            }
-            
-            return messages;
-        } catch (SQLException | JSONException e) {
-            System.err.println("Database error retrieving conversation history: " + e.getMessage());
-            e.printStackTrace();
-            return new ArrayList<>();
+            messages.add(message);
         }
+        
+        // Now get files for the same conversation
+        String fileQuery = "SELECT * FROM files WHERE conversation_id = ? ORDER BY timestamp ASC";
+        try (PreparedStatement fileStmt = conn.prepareStatement(fileQuery)) {
+            fileStmt.setString(1, conversationId);
+            ResultSet fileRs = fileStmt.executeQuery();
+            
+            while (fileRs.next()) {
+                JSONObject fileMessage = new JSONObject();
+                fileMessage.put("id", fileRs.getString("id"));
+                fileMessage.put("sender", fileRs.getString("sender_email"));
+                fileMessage.put("conversationId", fileRs.getString("conversation_id"));
+                fileMessage.put("type", "file");
+                fileMessage.put("filename", fileRs.getString("original_filename"));
+                fileMessage.put("mimeType", fileRs.getString("mime_type"));
+                fileMessage.put("fileSize", fileRs.getLong("file_size"));
+                fileMessage.put("timestamp", fileRs.getLong("timestamp"));
+                fileMessage.put("delivered", fileRs.getBoolean("delivered"));
+                fileMessage.put("viewed", fileRs.getBoolean("viewed"));
+                
+                messages.add(fileMessage);
+            }
+        }
+        
+        // Sort all messages by timestamp
+        messages.sort(Comparator.comparing(json -> json.getLong("timestamp")));
+        
+        return messages;
+    } catch (SQLException | JSONException e) {
+        System.err.println("Database error retrieving conversation history: " + e.getMessage());
+        e.printStackTrace();
+        return new ArrayList<>();
     }
+}
 
     @Override
     public boolean updateStatus(String messageId, Message.Status status) {

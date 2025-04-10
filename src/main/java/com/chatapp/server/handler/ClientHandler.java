@@ -12,9 +12,11 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.chatapp.server.service.UserService;
+import com.chatapp.server.service.FileService;
 import com.chatapp.server.service.GroupService;
 import com.chatapp.server.service.MessageService;
 import com.chatapp.server.service.GroupService;
+import com.chatapp.common.model.FileMessage;
 import com.chatapp.common.model.Group;
 
 public class ClientHandler implements Runnable {
@@ -29,6 +31,7 @@ public class ClientHandler implements Runnable {
 
     // Map to store groups (group name -> list of member emails)
     private static final GroupService groupService = new GroupService();
+    private static final FileService fileService = new FileService();
 
     public ClientHandler(Socket socket, List<ClientHandler> clients) throws IOException {
         this.clientSocket = socket;
@@ -119,6 +122,17 @@ public class ClientHandler implements Runnable {
                             handleGetGroups();
                             break;
 
+                            case "file_upload":
+                            handleFileUpload(messageJson);
+                            break;
+                            
+                        case "file_download":
+                            handleFileDownload(messageJson);
+                            break;
+                        case "group_file_upload":
+                            handleGroupFileUpload(messageJson);
+                            break;
+
                         case "disconnect":
                             System.out.println("Client " + userEmail + " disconnecting...");
                             return;
@@ -195,6 +209,139 @@ public class ClientHandler implements Runnable {
             }
         }
     }
+
+    // Add these methods to ClientHandler
+private void handleFileUpload(JSONObject messageJson) throws JSONException {
+    String recipient = messageJson.getString("to");
+    String filename = messageJson.getString("filename");
+    String mimeType = messageJson.getString("mimeType");
+    String base64Data = messageJson.getString("data");
+    
+    // Decode base64 data
+    byte[] fileData = java.util.Base64.getDecoder().decode(base64Data);
+    
+    // Save file
+    FileMessage file = fileService.saveFile(userEmail, recipient, filename, fileData, mimeType);
+    
+    if (file != null) {
+        // Notify recipient if online
+        ClientHandler recipientHandler = findClientByEmail(recipient);
+        JSONObject fileNotification = file.toJson();
+        
+        if (recipientHandler != null) {
+            recipientHandler.sendMessage(fileNotification.toString());
+            
+            // Send delivery receipt to sender
+            JSONObject receipt = new JSONObject();
+            receipt.put("type", "file_receipt");
+            receipt.put("fileId", file.getId());
+            receipt.put("status", "delivered");
+            sendMessage(receipt.toString());
+            
+            // Update file status in database
+            fileService.updateFileStatus(file.getId(), true, false);
+        } else {
+            // Store notification for offline delivery
+            JSONObject offlineMsg = new JSONObject();
+            offlineMsg.put("type", "file");
+            offlineMsg.put("id", file.getId());
+            offlineMsg.put("sender", userEmail);
+            offlineMsg.put("filename", filename);
+            offlineMsg.put("mimeType", mimeType);
+            offlineMsg.put("fileSize", fileData.length);
+            messageService.storeOfflineMessage(recipient, offlineMsg);
+            
+            // Send pending receipt to sender
+            JSONObject receipt = new JSONObject();
+            receipt.put("type", "file_receipt");
+            receipt.put("fileId", file.getId());
+            receipt.put("status", "pending");
+            sendMessage(receipt.toString());
+        }
+    } else {
+        // Send error to sender
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "Failed to save file: " + filename);
+        sendMessage(error.toString());
+    }
+}
+    
+
+
+    
+private void handleFileDownload(JSONObject messageJson) throws JSONException {
+    String fileId = messageJson.getString("fileId");
+    
+    // Get file data
+    byte[] fileData = fileService.getFileData(fileId);
+    
+    if (fileData != null) {
+        // Base64 encode for transmission
+        String base64Data = java.util.Base64.getEncoder().encodeToString(fileData);
+        
+        // Send file data to requester
+        JSONObject fileResponse = new JSONObject();
+        fileResponse.put("type", "file_data");
+        fileResponse.put("fileId", fileId);
+        fileResponse.put("data", base64Data);
+        sendMessage(fileResponse.toString());
+        
+        // Mark file as viewed
+        fileService.updateFileStatus(fileId, true, true);
+    } else {
+        // Send error
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "File not found: " + fileId);
+        sendMessage(error.toString());
+    }
+}
+private void handleGroupFileUpload(JSONObject messageJson) throws JSONException {
+    String groupName = messageJson.getString("groupName");
+    String filename = messageJson.getString("filename");
+    String mimeType = messageJson.getString("mimeType");
+    String base64Data = messageJson.getString("data");
+    
+    // Decode base64 data
+    byte[] fileData = java.util.Base64.getDecoder().decode(base64Data);
+    
+    // Get group
+    Group group = groupService.findGroupByName(groupName);
+    if (group == null) {
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "Group '" + groupName + "' not found");
+        sendMessage(error.toString());
+        return;
+    }
+    
+    // Save file
+    FileMessage file = fileService.saveGroupFile(userEmail, groupName, filename, fileData, mimeType);
+    
+    if (file != null) {
+        // Create notification
+        JSONObject fileNotification = file.toJson();
+        fileNotification.put("groupName", groupName);
+        
+        // Send to all group members
+        for (String member : group.getMembersEmails()) {
+            ClientHandler memberHandler = findClientByEmail(member);
+            if (memberHandler != null) {
+                memberHandler.sendMessage(fileNotification.toString());
+            } else {
+                // Store for offline members
+                messageService.storeOfflineMessage(member, fileNotification);
+            }
+        }
+    } else {
+        // Send error to sender
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "Failed to save file: " + filename);
+        sendMessage(error.toString());
+    }
+}
 
     private void handleBroadcastMessage(JSONObject messageJson) throws JSONException {
         String content = messageJson.getString("content");
