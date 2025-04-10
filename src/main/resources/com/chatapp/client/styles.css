@@ -9,7 +9,15 @@
   -fx-background-radius: 8;
   -fx-padding: 20;
 }
+.status-online {
+  -fx-text-fill: green;
+  -fx-font-size: 12px;
+}
 
+.status-offline {
+  -fx-text-fill: gray;
+  -fx-font-size: 12px;
+}
 .header-label {
   -fx-font-size: 18px;
   -fx-font-weight: bold;

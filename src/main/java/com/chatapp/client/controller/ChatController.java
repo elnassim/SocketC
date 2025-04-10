@@ -11,7 +11,6 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.layout.Priority;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -25,7 +24,7 @@ import com.chatapp.common.model.User;
 import com.chatapp.data.dao.ContactDAO;
 import com.chatapp.data.dao.impl.ContactDAOImpl;
 import com.chatapp.client.network.ClientNetworkService;
-
+import com.chatapp.client.network.UserStatusListener;
 // Import du contrôleur de profil pour accéder à la méthode initData()
 import com.chatapp.client.controller.ProfileController;
 
@@ -39,7 +38,7 @@ public class ChatController {
     @FXML private VBox messageContainer;
     @FXML private TextField messageInput;
     @FXML private Button sendButton;
-    @FXML private ListView<String> contactsList;
+    @FXML private ListView<HBox> contactsList;
     @FXML private TextField searchField;
     @FXML private Button addContactButton;
     @FXML private Button showContactsButton;
@@ -87,7 +86,9 @@ public class ChatController {
         // When a contact is clicked, open its conversation tab
         contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
-                handleContactClick(newVal);
+                Label contactNameLabel = (Label) newVal.getChildren().get(0); // Récupère le Label contenant l'email
+                String email = contactNameLabel.getText();
+                handleContactClick(email); // Passe l'email à la méthode
             }
         });
 
@@ -145,14 +146,15 @@ public class ChatController {
         this.in = in;
         this.out = out;
         this.connected = true;
-        
-        // Initialize network service
-        this.networkService = new ClientNetworkService();
-        
+    
+        // Start the UserStatusListener
         try {
-            this.networkService.initRetryMechanism();
-        } catch (Exception e) {
-            addSystemMessage("Error initializing message retry system: " + e.getMessage());
+            UserStatusListener listener = new UserStatusListener(status -> {
+                Platform.runLater(() -> updateContactStatus(status.getEmail(), status.getStatus()));
+            });
+            new Thread(listener).start();
+        } catch (IOException e) {
+            addSystemMessage("Error starting UserStatusListener: " + e.getMessage());
         }
     
         loadContacts();
@@ -160,7 +162,34 @@ public class ChatController {
         addSystemMessage("Connected as " + userEmail);
         startMessageListener();
     }
+   
 
+    private void updateContactStatus(String email, String status) {
+        contactsList.getItems().removeIf(item -> {
+            Label label = (Label) item.getChildren().get(0);
+            return label.getText().equals(email);
+        });
+    
+        HBox contactItem = new HBox();
+        contactItem.setSpacing(10);
+    
+        // Add contact name
+        Label contactName = new Label(email);
+        contactName.setStyle("-fx-font-weight: bold;");
+    
+        // Add status indicator
+        Label statusLabel = new Label();
+        if ("online".equals(status)) {
+            statusLabel.setText("●");
+            statusLabel.setStyle("-fx-text-fill: green; -fx-font-size: 12px;");
+        } else {
+            statusLabel.setText("●");
+            statusLabel.setStyle("-fx-text-fill: gray; -fx-font-size: 12px;");
+        }
+    
+        contactItem.getChildren().addAll(contactName, statusLabel);
+        contactsList.getItems().add(contactItem);
+    }
     private void startMessageListener() {
         new Thread(() -> {
             try {
@@ -694,9 +723,32 @@ public class ChatController {
             addSystemMessage("Error saving contacts: " + e.getMessage());
         }
     }
+    private HBox createContactItem(String email, String status) {
+        HBox contactItem = new HBox();
+        contactItem.setSpacing(10);
+    
+        Label contactName = new Label(email);
+        contactName.setStyle("-fx-font-weight: bold;");
+    
+        Label statusLabel = new Label();
+        if ("online".equals(status)) {
+            statusLabel.setText("●");
+            statusLabel.setStyle("-fx-text-fill: green; -fx-font-size: 12px;");
+        } else {
+            statusLabel.setText("●");
+            statusLabel.setStyle("-fx-text-fill: gray; -fx-font-size: 12px;");
+        }
+    
+        contactItem.getChildren().addAll(contactName, statusLabel);
+        return contactItem;
+    }
 
     private void refreshContactsList() {
-        contactsList.getItems().setAll(contacts);
+        contactsList.getItems().clear();
+        for (String email : contacts) {
+            HBox contactItem = createContactItem(email, "offline"); // Par défaut, "offline"
+            contactsList.getItems().add(contactItem);
+        }
     }
     private final ContactDAO contactDAO = new ContactDAOImpl();
 
@@ -736,28 +788,35 @@ public class ChatController {
     }
 
     @FXML
-    public void handleShowContactsButton(ActionEvent event) {
-        List<String> sortedContacts = new ArrayList<>(contacts);
-        Collections.sort(sortedContacts);
-        contactsList.getItems().setAll(sortedContacts);
+public void handleShowContactsButton(ActionEvent event) {
+    List<String> sortedContacts = new ArrayList<>(contacts);
+    Collections.sort(sortedContacts);
+    contactsList.getItems().clear();
+    for (String email : sortedContacts) {
+        HBox contactItem = createContactItem(email, "offline"); // Par défaut, "offline"
+        contactsList.getItems().add(contactItem);
     }
+}
 
-    @FXML
-    public void handleDeleteContactButton(ActionEvent event) {
-        String selectedContact = contactsList.getSelectionModel().getSelectedItem();
-        if (selectedContact != null) {
-            boolean success = contactDAO.removeContact(userEmail, selectedContact);
-            if (success) {
-                contacts.remove(selectedContact);
-                refreshContactsList();
-                addSystemMessage("Contact removed: " + selectedContact);
-            } else {
-                addSystemMessage("Failed to remove contact: " + selectedContact);
-            }
+@FXML
+public void handleDeleteContactButton(ActionEvent event) {
+    HBox selectedContactItem = contactsList.getSelectionModel().getSelectedItem();
+    if (selectedContactItem != null) {
+        Label contactNameLabel = (Label) selectedContactItem.getChildren().get(0);
+        String selectedContact = contactNameLabel.getText();
+
+        boolean success = contactDAO.removeContact(userEmail, selectedContact);
+        if (success) {
+            contacts.remove(selectedContact);
+            refreshContactsList();
+            addSystemMessage("Contact removed: " + selectedContact);
         } else {
-            addSystemMessage("No contact selected.");
+            addSystemMessage("Failed to remove contact: " + selectedContact);
         }
+    } else {
+        addSystemMessage("No contact selected.");
     }
+}
     
     /* ---------- Group Feature ---------- */
     @FXML

@@ -19,6 +19,7 @@ import java.io.PrintWriter;
 import java.net.Socket;
 
 import com.chatapp.client.network.ClientNetworkService;
+import com.chatapp.client.network.UserStatusBroadcaster;
 
 public class LoginController {
 
@@ -141,25 +142,25 @@ public class LoginController {
      * @throws IOException en cas d'erreur lors du chargement de la vue
      */
     private void launchChatUI(String email, Socket socket, BufferedReader in, PrintWriter out) throws IOException {
-        FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/chat-view.fxml"));
-        Parent chatView = loader.load();
+    FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/chat-view.fxml"));
+    Parent chatView = loader.load();
 
-        // Récupère le contrôleur et initialise la session de chat
-        ChatController controller = loader.getController();
-        controller.initChatSession(email, socket, in, out);
+    ChatController controller = loader.getController();
+    controller.initChatSession(email, socket, in, out);
 
-        // Crée une nouvelle scène pour la vue de chat
-        Scene chatScene = new Scene(chatView, 600, 400);
+    // Start broadcasting "online" status
+    UserStatusBroadcaster broadcaster = new UserStatusBroadcaster(email);
+new Thread(broadcaster).start();
 
-        // Récupère la fenêtre actuelle et affecte la nouvelle scène
-        Platform.runLater(() -> {
-            Stage stage = (Stage) connectButton.getScene().getWindow();
-            stage.setTitle("Chat Client - " + email);
-            stage.setScene(chatScene);
-            stage.setResizable(true);
-            stage.show();
-        });
-    }
+    Scene chatScene = new Scene(chatView, 600, 400);
+    Platform.runLater(() -> {
+        Stage stage = (Stage) connectButton.getScene().getWindow();
+        stage.setTitle("Chat Client - " + email);
+        stage.setScene(chatScene);
+        stage.setResizable(true);
+        stage.show();
+    });
+}
 
     private void showError(String message) {
         messageLabel.setText(message);
