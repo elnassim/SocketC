@@ -8,10 +8,10 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.layout.Priority;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,6 +19,7 @@ import org.json.JSONObject;
 
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.util.*;
 
 import com.chatapp.common.model.User;
@@ -50,6 +51,7 @@ public class ChatController {
     @FXML private Button createGroupButton;
     // Bouton Profil tel que défini dans chat-view.fxml
     @FXML private Button profileButton;
+    @FXML private Button sendFileButton;
 
     /* ---------- Internal Fields ---------- */
     private String userEmail;
@@ -60,6 +62,7 @@ public class ChatController {
     private HashSet<String> contacts = new HashSet<>();
     // conversationMap keys: for one-to-one, use sender email; for groups, use group name
     private Map<String, List<MessageData>> conversationMap = new HashMap<>();
+    private Map<String, String> pendingDownloads = new HashMap<>();
     private ClientNetworkService networkService;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
     
@@ -83,6 +86,7 @@ public class ChatController {
     @FXML
     public void initialize() {
         messageInput.setOnAction(event -> sendMessage());
+        sendFileButton.setOnAction(event -> handleSendFileAction());
         
         // When a contact is clicked, open its conversation tab
         contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
@@ -156,7 +160,14 @@ public class ChatController {
             addSystemMessage("Error initializing message retry system: " + e.getMessage());
         }
     
+        // Load contacts first (this has to work before loadGroups)
         loadContacts();
+        
+        // Add this explicit call to load groups after the socket is initialized
+        System.out.println("Loading groups for user: " + email);
+        loadGroups();
+        
+        // Refresh UI
         refreshContactsList();
         addSystemMessage("Connected as " + userEmail);
         startMessageListener();
@@ -165,11 +176,26 @@ public class ChatController {
     private void startMessageListener() {
         new Thread(() -> {
             try {
+                // Load groups again after a short delay to ensure connection is ready
+                Thread.sleep(1000);
+                Platform.runLater(() -> {
+                    try {
+                        System.out.println("Requesting groups list after connection startup");
+                        JSONObject request = new JSONObject();
+                        request.put("type", "get_groups");
+                        out.println(request.toString());
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                });
+                
                 String line;
                 while (connected && (line = in.readLine()) != null) {
                     final String receivedMsg = line;
                     Platform.runLater(() -> handleIncomingMessage(receivedMsg));
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (IOException e) {
                 if (connected) {
                     Platform.runLater(() -> addSystemMessage("Connection lost: " + e.getMessage()));
@@ -227,13 +253,99 @@ public class ChatController {
 
     public void loadGroups() {
         try {
+            System.out.println("Requesting groups from server...");
             JSONObject request = new JSONObject();
             request.put("type", "get_groups");
-            networkService.sendMessage(request.toString());
+            out.println(request.toString()); 
         } catch (JSONException e) {
+            System.err.println("Error requesting groups: " + e.getMessage());
             e.printStackTrace();
         }
     }
+
+    private void handleSendFileAction() {
+    // Check if a conversation is active
+    if (conversationTabPane.getSelectionModel().isEmpty()) {
+        addSystemMessage("Select a contact first");
+        return;
+    }
+    
+    String recipient = conversationTabPane.getSelectionModel().getSelectedItem().getText();
+    
+    // Create file chooser
+    FileChooser fileChooser = new FileChooser();
+    fileChooser.setTitle("Select File to Send");
+    
+    // Set file filters
+    FileChooser.ExtensionFilter allFilter = new FileChooser.ExtensionFilter("All Files", "*.*");
+    FileChooser.ExtensionFilter imageFilter = new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif");
+    FileChooser.ExtensionFilter docFilter = new FileChooser.ExtensionFilter("Documents", "*.pdf", "*.doc", "*.docx", "*.txt");
+    
+    fileChooser.getExtensionFilters().addAll(imageFilter, docFilter, allFilter);
+    
+    // Show dialog
+    File selectedFile = fileChooser.showOpenDialog(sendFileButton.getScene().getWindow());
+    if (selectedFile == null) {
+        return;
+    }
+    
+    // Check file size (limit to 10MB for example)
+    if (selectedFile.length() > 10 * 1024 * 1024) {
+        addSystemMessage("File is too large. Maximum size is 10MB.");
+        return;
+    }
+    
+    // Send file
+    sendFile(recipient, selectedFile);
+}
+
+private void sendFile(String recipient, File file) {
+    try {
+        // Read file data
+        byte[] fileData = Files.readAllBytes(file.toPath());
+        
+        // Determine mime type
+        String mimeType = Files.probeContentType(file.toPath());
+        if (mimeType == null) {
+            mimeType = "application/octet-stream";
+        }
+        
+        // Encode file data as Base64
+        String base64Data = java.util.Base64.getEncoder().encodeToString(fileData);
+        
+        // Create file upload message
+        JSONObject fileUpload = new JSONObject();
+        fileUpload.put("type", "file_upload");
+        fileUpload.put("to", recipient);
+        fileUpload.put("sender", userEmail);
+        fileUpload.put("filename", file.getName());
+        fileUpload.put("mimeType", mimeType);
+        fileUpload.put("data", base64Data);
+        
+        // Send message
+        out.println(fileUpload.toString());
+        
+        // Add visual feedback
+        VBox container = contactMessageContainers.get(recipient);
+        if (container != null) {
+            // Store the final mimeType in a final variable to use in the lambda
+            final String finalMimeType = mimeType;
+            String sizeDisplay = formatFileSize(file.length());
+            // Generate temporary ID for the file until server assigns a real one
+            String tempFileId = "temp_" + System.currentTimeMillis();
+            Platform.runLater(() -> {
+                addFileMessageToContainer(container, userEmail, tempFileId, file.getName(), 
+                                         finalMimeType, sizeDisplay, true);
+            });
+        }
+        
+        // Add message to UI
+        addSystemMessage("Sending file: " + file.getName() + " to " + recipient);
+    } catch (IOException | JSONException e) {
+        addSystemMessage("Error sending file: " + e.getMessage());
+        e.printStackTrace();
+    }
+}
 
     private void handleBroadcastMessage(String sender, String content) {
         storeMessage("All", sender, content, false, false);
@@ -256,69 +368,103 @@ public class ChatController {
         return createContactTab(key);
     }
 
-    private Tab createContactTab(String key) {
-        Tab newTab = new Tab(key);
-        VBox conversationView = new VBox();
-        conversationView.setSpacing(5);
+    // In ChatController.java, modify the createContactTab method
+private Tab createContactTab(String contactKey) {
+    Tab tab = new Tab(contactKey);
     
-        ScrollPane scrollPane = new ScrollPane();
-        VBox messagesBox = new VBox(5);
-        messagesBox.setPadding(new Insets(10));
-        scrollPane.setContent(messagesBox);
-        scrollPane.setFitToWidth(true);
-        scrollPane.vvalueProperty().bind(messagesBox.heightProperty());
-        scrollPane.getStyleClass().add("messages-scroll-pane");
-        messagesBox.getStyleClass().add("messages-container");
-        VBox.setVgrow(scrollPane, Priority.ALWAYS);
-        
-        HBox inputArea = new HBox(5);
-        inputArea.setSpacing(10);
-        inputArea.setPadding(new Insets(10));
-        inputArea.setAlignment(Pos.CENTER);
-        inputArea.getStyleClass().add("message-input-container");
-        
-        TextField messageField = new TextField();
-        messageField.setPromptText("Type message to " + key + "...");
-        messageField.setPrefWidth(400);
-        HBox.setHgrow(messageField, Priority.ALWAYS);
-        
-        Button sendButton = new Button("Send");
-        sendButton.getStyleClass().add("primary-button");
-        
-        // Event handler for sending message
-        sendButton.setOnAction(event -> {
-            String msg = messageField.getText().trim();
-            if (!msg.isEmpty()) {
-                sendPrivateMessage(key, msg);
-                messageField.clear();
-                messageField.requestFocus();
-            }
-        });
-        messageField.setOnAction(event -> {
-            String msg = messageField.getText().trim();
-            if (!msg.isEmpty()) {
-                sendPrivateMessage(key, msg);
-                messageField.clear();
-                messageField.requestFocus();
-            }
-        });
+    VBox container = new VBox();
+    container.setSpacing(10);
+    
+    ScrollPane scrollPane = new ScrollPane();
+    scrollPane.setFitToWidth(true);
+    scrollPane.getStyleClass().add("messages-scroll-pane");
 
-        inputArea.getChildren().addAll(messageField, sendButton);
-        conversationView.getChildren().addAll(scrollPane, inputArea);
-        newTab.setContent(conversationView);
-        newTab.setClosable(true);
+    VBox messagesContainer = new VBox();
+    messagesContainer.getStyleClass().add("messages-container");
+    scrollPane.setContent(messagesContainer);
+    
+    contactMessageContainers.put(contactKey, messagesContainer);
 
-        contactTabs.put(key, newTab);
-        contactMessageContainers.put(key, messagesBox);
-        
-        newTab.setOnClosed(e -> {
-            contactTabs.remove(key);
-            contactMessageContainers.remove(key);
-        });
+    TextField inputField = new TextField();
+    inputField.setPromptText("Type your message...");
+    inputField.setPrefHeight(30);
+    inputField.setOnAction(event -> {
+        String content = inputField.getText().trim();
+        if (!content.isEmpty()) {
+            sendPrivateMessage(contactKey, content);
+            inputField.clear();
+        }
+    });
+    
+    // Create send button
+    Button sendButton = new Button("Send");
+    sendButton.setPrefWidth(70);
+    sendButton.getStyleClass().add("primary-button");
+    sendButton.setOnAction(event -> {
+        String content = inputField.getText().trim();
+        if (!content.isEmpty()) {
+            sendPrivateMessage(contactKey, content);
+            inputField.clear();
+        }
+    });
 
-        loadConversationHistory(key, messagesBox);
-        return newTab;
+    // Create file button - ONLY for contact tabs, not for General
+    Button fileButton = new Button("📎");
+    fileButton.setPrefWidth(40);
+    fileButton.setPrefHeight(40);
+    fileButton.getStyleClass().add("primary-button");
+    fileButton.setOnAction(event -> {
+        // Send file to this contact specifically
+        handleSendFileToContact(contactKey);
+    });
+    
+    // Create input area with file button
+    HBox inputArea = new HBox(10);
+    inputArea.setAlignment(Pos.CENTER);
+    inputArea.getStyleClass().add("message-input-container");
+    inputArea.getChildren().addAll(inputField, fileButton, sendButton);
+    
+    // Add initial loading message
+    Label loadingLabel = new Label("Loading conversation history...");
+    messagesContainer.getChildren().add(loadingLabel);
+    
+    container.getChildren().addAll(scrollPane, inputArea);
+    tab.setContent(container);
+    
+    // Request history when tab is created
+    requestConversationHistory(contactKey);
+    
+    contactTabs.put(contactKey, tab);
+    return tab;
+}
+
+private void handleSendFileToContact(String contactEmail) {
+    // Create file chooser
+    FileChooser fileChooser = new FileChooser();
+    fileChooser.setTitle("Select File to Send to " + contactEmail);
+    
+    // Set file filters
+    FileChooser.ExtensionFilter allFilter = new FileChooser.ExtensionFilter("All Files", "*.*");
+    FileChooser.ExtensionFilter imageFilter = new FileChooser.ExtensionFilter("Images", "*.png", "*.jpg", "*.jpeg", "*.gif");
+    FileChooser.ExtensionFilter docFilter = new FileChooser.ExtensionFilter("Documents", "*.pdf", "*.doc", "*.docx", "*.txt");
+    
+    fileChooser.getExtensionFilters().addAll(imageFilter, docFilter, allFilter);
+    
+    // Show dialog
+    File selectedFile = fileChooser.showOpenDialog(conversationTabPane.getScene().getWindow());
+    if (selectedFile == null) {
+        return;
     }
+    
+    // Check file size (limit to 10MB for example)
+    if (selectedFile.length() > 10 * 1024 * 1024) {
+        addSystemMessage("File is too large. Maximum size is 10MB.");
+        return;
+    }
+    
+    // Send file to the specific contact
+    sendFile(contactEmail, selectedFile);
+}
 
     private void loadConversationHistory(String contactEmail, VBox container) {
         List<MessageData> localHistory = conversationMap.getOrDefault(contactEmail, new ArrayList<>());
@@ -471,15 +617,96 @@ public class ChatController {
                 handleHistoryResponse(msgJson);
             } else if ("group_created".equals(type)) {
                 String groupName = msgJson.getString("groupName");
-                System.out.println("Received group_created notification for group: " + groupName);
+                System.out.println("Group created: " + groupName);
                 
                 Platform.runLater(() -> {
                     if (!contacts.contains(groupName)) {
                         contacts.add(groupName);
-                        saveContacts();
+                        saveContacts(); // If you're using local storage
                         refreshContactsList();
-                        addSystemMessage("You have been added to group: " + groupName);
+                        addSystemMessage("You've been added to group: " + groupName);
                     }
+                });
+            }
+            else if ("groups_list".equals(type)) {
+                System.out.println("Received groups list from server");
+                JSONArray groupsArray = msgJson.getJSONArray("groups");
+                System.out.println("Found " + groupsArray.length() + " groups");
+                
+                Platform.runLater(() -> {
+                    for (int i = 0; i < groupsArray.length(); i++) {
+                        try {
+                            JSONObject groupJson = groupsArray.getJSONObject(i);
+                            String groupName = groupJson.getString("name");
+                            System.out.println("Adding group to contacts: " + groupName);
+                            
+                            if (!contacts.contains(groupName)) {
+                                contacts.add(groupName);
+                            }
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    
+                    saveContacts(); // If you're saving contacts locally
+                    refreshContactsList();
+                });
+            }
+
+            else if ("file".equals(type)) {
+                String sender = msgJson.getString("sender");
+                String fileId = msgJson.getString("id");
+                String filename = msgJson.getString("filename");
+                String mimeType = msgJson.getString("mimeType");
+                long fileSize = msgJson.getLong("fileSize");
+                
+                // Format file size for display
+                String sizeDisplay = formatFileSize(fileSize);
+                
+                Platform.runLater(() -> {
+                    // Add to UI
+                    if (!sender.equals(userEmail)) {
+                        // This is an incoming file
+                        if (!contacts.contains(sender)) {
+                            contacts.add(sender);
+                            saveContacts();
+                            refreshContactsList();
+                        }
+                        
+                        // Create or get tab for this sender
+                        Tab tab = getOrCreateContactTab(sender);
+                        if (!conversationTabPane.getTabs().contains(tab)) {
+                            conversationTabPane.getTabs().add(tab);
+                        }
+                        
+                        // Add file message to conversation
+                        VBox container = contactMessageContainers.get(sender);
+                        if (container != null) {
+                            addFileMessageToContainer(container, sender, fileId, filename, mimeType, sizeDisplay, false);
+                            flashContactTab(sender);
+                            
+                            // Send read receipt if tab is selected
+                            if (conversationTabPane.getSelectionModel().getSelectedItem() == tab) {
+                                sendFileViewedReceipt(fileId, sender);
+                            }
+                        }
+                    }
+                });
+            }
+            else if ("file_data".equals(type)) {
+                String fileId = msgJson.getString("fileId");
+                String base64Data = msgJson.getString("data");
+                
+                // Save the file or display it
+                handleFileData(fileId, base64Data);
+            }
+            else if ("file_receipt".equals(type)) {
+                String fileId = msgJson.getString("fileId");
+                String status = msgJson.getString("status");
+                
+                // Update file status in UI
+                Platform.runLater(() -> {
+                    updateFileStatus(fileId, status);
                 });
             }
         } catch (JSONException e) {
@@ -515,8 +742,7 @@ public class ChatController {
             for (int i = 0; i < messagesArray.length(); i++) {
                 JSONObject messageJson = messagesArray.getJSONObject(i);
                 
-                if (!messageJson.has("sender") || !messageJson.has("content") || 
-                    !messageJson.has("type") || !messageJson.has("conversationId")) {
+                if (!messageJson.has("sender") || !messageJson.has("type") || !messageJson.has("conversationId")) {
                     continue;
                 }
                 
@@ -567,11 +793,29 @@ public class ChatController {
                         for (JSONObject messageJson : messages) {
                             try {
                                 String sender = messageJson.getString("sender");
-                                String content = messageJson.getString("content");
-                                if (sender.equals(userEmail)) {
-                                    addOutgoingMessageToContainer(container, content);
-                                } else {
-                                    addIncomingMessageToContainer(container, sender, content);
+                                
+                                // Handle regular text messages
+                                if (messageJson.has("content")) {
+                                    String content = messageJson.getString("content");
+                                    if (sender.equals(userEmail)) {
+                                        addOutgoingMessageToContainer(container, content);
+                                    } else {
+                                        addIncomingMessageToContainer(container, sender, content);
+                                    }
+                                }
+                                // Handle file messages
+                                else if (messageJson.getString("type").equals("file")) {
+                                    String fileId = messageJson.getString("id");
+                                    String filename = messageJson.getString("filename");
+                                    String mimeType = messageJson.getString("mimeType");
+                                    long fileSize = messageJson.getLong("fileSize");
+                                    String sizeDisplay = formatFileSize(fileSize);
+                                    
+                                    if (sender.equals(userEmail)) {
+                                        addFileMessageToContainer(container, sender, fileId, filename, mimeType, sizeDisplay, true);
+                                    } else {
+                                        addFileMessageToContainer(container, sender, fileId, filename, mimeType, sizeDisplay, false);
+                                    }
                                 }
                             } catch (JSONException e) {
                                 System.err.println("Error displaying message: " + e.getMessage());
@@ -580,13 +824,201 @@ public class ChatController {
                     }
                 });
             }
-            
         } catch (JSONException e) {
             System.err.println("Error processing history: " + e.getMessage());
             e.printStackTrace();
             Platform.runLater(() -> addSystemMessage("Error processing chat history"));
         }
     }
+    // Add to ChatController.java
+
+                private void addFileMessageToContainer(VBox container, String sender, String fileId, 
+                String filename, String mimeType, String sizeDisplay, boolean isOutgoing) {
+
+                HBox messageBox = new HBox(10);
+                messageBox.setAlignment(isOutgoing ? Pos.CENTER_RIGHT : Pos.CENTER_LEFT);
+                messageBox.setPadding(new Insets(5, 10, 5, 10));
+
+                VBox fileBox = new VBox(5);
+                fileBox.setStyle("-fx-background-color: " + (isOutgoing ? "#DCF8C6" : "#FFFFFF") + ";" +
+                            "-fx-background-radius: 10;" +
+                            "-fx-padding: 10;");
+
+                Label nameLabel = new Label(filename);
+                nameLabel.setStyle("-fx-font-weight: bold;");
+
+                Label infoLabel = new Label(mimeType + " • " + sizeDisplay);
+                infoLabel.setStyle("-fx-font-size: 10;");
+
+                Button downloadButton = new Button("Download");
+                downloadButton.setOnAction(e -> downloadFile(fileId, filename));
+
+                fileBox.getChildren().addAll(nameLabel, infoLabel, downloadButton);
+
+                if (isOutgoing) {
+                Label statusLabel = new Label("Sending...");
+                statusLabel.setId("file-status-" + fileId);
+                statusLabel.setStyle("-fx-font-size: 10;");
+                fileBox.getChildren().add(statusLabel);
+                }
+
+                messageBox.getChildren().add(fileBox);
+                container.getChildren().add(messageBox);
+
+                // Auto-scroll to bottom
+                ScrollPane scrollPane = (ScrollPane) container.getParent();
+                scrollPane.setVvalue(1.0);
+                }
+
+                private void downloadFile(String fileId, String filename) {
+                    try {
+                        // Store the filename for later use
+                        pendingDownloads.put(fileId, filename);
+                        
+                        // Request file from server
+                        JSONObject request = new JSONObject();
+                        request.put("type", "file_download");
+                        request.put("fileId", fileId);
+                        out.println(request.toString());
+                
+                        addSystemMessage("Downloading file: " + filename);
+                    } catch (JSONException e) {
+                        addSystemMessage("Error requesting file: " + e.getMessage());
+                    }
+                }
+
+                private void handleFileData(String fileId, String base64Data) {
+                    try {
+                        // Decode file data
+                        byte[] fileData = java.util.Base64.getDecoder().decode(base64Data);
+                        
+                        // Create a "Downloads" directory if it doesn't exist
+                        File downloadsDir = new File("Downloads");
+                        if (!downloadsDir.exists()) {
+                            downloadsDir.mkdirs();
+                        }
+                        
+                        // Get the original filename from the server response or use the fileId
+                        String filename = "downloaded_file_" + fileId;
+                        if (pendingDownloads.containsKey(fileId)) {
+                            filename = pendingDownloads.get(fileId);
+                            pendingDownloads.remove(fileId);
+                        }
+
+                        File file = new File(downloadsDir, ensureUniqueFilename(downloadsDir, filename));
+        
+        // Save the file directly
+        Files.write(file.toPath(), fileData);
+        
+        // Show success message with file location
+        Platform.runLater(() -> {
+            addSystemMessage("File downloaded successfully: " + file.getAbsolutePath());
+            
+            // Optional: Open the containing folder
+            try {
+                Runtime.getRuntime().exec("explorer.exe /select," + file.getAbsolutePath());
+            } catch (IOException e) {
+                // Silently ignore if we can't open the folder
+            }
+        });
+        
+    } catch (Exception e) {
+        addSystemMessage("Error processing file data: " + e.getMessage());
+        e.printStackTrace();
+    }
+}
+
+private String ensureUniqueFilename(File directory, String filename) {
+    File file = new File(directory, filename);
+    if (!file.exists()) {
+        return filename;
+    }
+    
+    // If file exists, add a number to make it unique
+    String name = filename;
+    String extension = "";
+    int dotIndex = filename.lastIndexOf('.');
+    if (dotIndex > 0) {
+        name = filename.substring(0, dotIndex);
+        extension = filename.substring(dotIndex);
+    }
+    
+    int counter = 1;
+    while (true) {
+        String newName = name + "_" + counter + extension;
+        file = new File(directory, newName);
+        if (!file.exists()) {
+            return newName;
+        }
+        counter++;
+    }
+}
+
+private void sendGroupFile(String groupName, File file) {
+    try {
+        // Read file data
+        byte[] fileData = Files.readAllBytes(file.toPath());
+        
+        // Determine mime type
+        String mimeType = Files.probeContentType(file.toPath());
+        if (mimeType == null) {
+            mimeType = "application/octet-stream";
+        }
+        
+        // Encode file data as Base64
+        String base64Data = java.util.Base64.getEncoder().encodeToString(fileData);
+        
+        // Create file upload message
+        JSONObject fileUpload = new JSONObject();
+        fileUpload.put("type", "group_file_upload");
+        fileUpload.put("groupName", groupName);
+        fileUpload.put("sender", userEmail);
+        fileUpload.put("filename", file.getName());
+        fileUpload.put("mimeType", mimeType);
+        fileUpload.put("data", base64Data);
+        
+        // Send message
+        out.println(fileUpload.toString());
+        
+        // Add message to UI
+        addSystemMessage("Sending file: " + file.getName() + " to group: " + groupName);
+    } catch (IOException | JSONException e) {
+        addSystemMessage("Error sending file: " + e.getMessage());
+        e.printStackTrace();
+    }
+}
+
+            private void sendFileViewedReceipt(String fileId, String sender) {
+                try {
+                JSONObject receipt = new JSONObject();
+                receipt.put("type", "file_viewed");
+                receipt.put("fileId", fileId);
+                receipt.put("sender", sender);
+                out.println(receipt.toString());
+                } catch (JSONException e) {
+                System.err.println("Error sending file viewed receipt: " + e.getMessage());
+                }
+                }
+
+            private void updateFileStatus(String fileId, String status) {
+                Label statusLabel = (Label) conversationTabPane.getScene().lookup("#file-status-" + fileId);
+                if (statusLabel != null) {
+                statusLabel.setText(status);
+                }
+                }
+
+                private String formatFileSize(long size) {
+                final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
+                int unitIndex = 0;
+                double sizeValue = size;
+
+                while (sizeValue > 1024 && unitIndex < units.length - 1) {
+                sizeValue /= 1024;
+                unitIndex++;
+                }
+
+                return String.format("%.1f %s", sizeValue, units[unitIndex]);
+                }
 
     private void handleDeliveryReceipt(JSONObject receipt) {
         try {
@@ -722,7 +1154,9 @@ public class ChatController {
         try {
             contacts.clear();
             contacts.addAll(contactDAO.getContacts(userEmail));
+            loadGroups();
             refreshContactsList();
+            
         } catch (Exception e) {
             addSystemMessage("Error loading contacts: " + e.getMessage());
         }
