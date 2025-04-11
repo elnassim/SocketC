@@ -47,3 +47,19 @@ CREATE TABLE IF NOT EXISTS contacts (
     FOREIGN KEY (user_email) REFERENCES users(email),
     FOREIGN KEY (contact_email) REFERENCES users(email)
 );
+
+-- Add these to your schema.sql file if not already there
+CREATE TABLE IF NOT EXISTS user_groups (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+    group_id INT NOT NULL,
+    user_email VARCHAR(255) NOT NULL,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (group_id, user_email),
+    FOREIGN KEY (group_id) REFERENCES user_groups(id),
+    FOREIGN KEY (user_email) REFERENCES users(email)
+);
