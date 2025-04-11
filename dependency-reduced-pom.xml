@@ -19,7 +19,7 @@
         <artifactId>javafx-maven-plugin</artifactId>
         <version>${javafx.maven.plugin.version}</version>
         <configuration>
-          <mainClass>com.chatapp.LoginApp</mainClass>
+          <mainClass>com.chatapp.client.App</mainClass>
         </configuration>
       </plugin>
       <plugin>
@@ -32,9 +32,23 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                    <exclude>META-INF/substrate/config/reflectionconfig*.json</exclude>
+                    <exclude>META-INF/substrate/config/resourcebundles/**</exclude>
+                  </excludes>
+                </filter>
+              </filters>
               <transformers>
                 <transformer>
-                  <mainClass>com.chatapp.LoginApp</mainClass>
+                  <mainClass>com.chatapp.client.App</mainClass>
                 </transformer>
               </transformers>
             </configuration>
@@ -47,18 +61,35 @@
         <version>3.0.0</version>
         <executions>
           <execution>
+            <id>server</id>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <configuration>
+              <mainClass>com.chatapp.server.Server</mainClass>
+            </configuration>
+          </execution>
+          <execution>
             <id>client</id>
             <goals>
               <goal>java</goal>
             </goals>
             <configuration>
-              <mainClass>com.chatapp.Client</mainClass>
+              <mainClass>com.chatapp.client.App</mainClass>
             </configuration>
           </execution>
         </executions>
       </plugin>
     </plugins>
   </build>
+  <dependencies>
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>8.0.33</version>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
   <properties>
     <maven.compiler.target>11</maven.compiler.target>
     <maven.compiler.source>11</maven.compiler.source>
