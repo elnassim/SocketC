@@ -2,6 +2,7 @@ package com.chatapp.server.handler;
 
 import java.io.*;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
@@ -11,7 +12,10 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.chatapp.server.service.UserService;
+import com.chatapp.server.service.GroupService;
 import com.chatapp.server.service.MessageService;
+import com.chatapp.server.service.GroupService;
+import com.chatapp.common.model.Group;
 
 public class ClientHandler implements Runnable {
     private Socket clientSocket;
@@ -21,9 +25,10 @@ public class ClientHandler implements Runnable {
     private String userEmail; // Authenticated user's email
     private UserService userService;
     private MessageService messageService;
+    
 
     // Map to store groups (group name -> list of member emails)
-    private static final Map<String, List<String>> groupMap = new ConcurrentHashMap<>();
+    private static final GroupService groupService = new GroupService();
 
     public ClientHandler(Socket socket, List<ClientHandler> clients) throws IOException {
         this.clientSocket = socket;
@@ -109,6 +114,10 @@ public class ClientHandler implements Runnable {
                         case "create_group":
                             handleCreateGroup(messageJson);
                             break;
+                        
+                        case "get_groups":
+                            handleGetGroups();
+                            break;
 
                         case "disconnect":
                             System.out.println("Client " + userEmail + " disconnecting...");
@@ -132,7 +141,8 @@ public class ClientHandler implements Runnable {
         String recipient = messageJson.getString("to");
         String content = messageJson.getString("content");
 
-        if (groupMap.containsKey(recipient)) {
+        // Use GroupService instead of groupMap
+        if (groupService.findGroupByName(recipient) != null) {
             handleGroupMessage(recipient, content);
         } else {
             handleDirectMessage(recipient, content);
@@ -154,7 +164,19 @@ public class ClientHandler implements Runnable {
     }
 
     private void handleGroupMessage(String groupName, String content) throws JSONException {
-        List<String> members = groupMap.get(groupName);
+        Group group = groupService.findGroupByName(groupName);
+        
+        if (group == null) {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "Group '" + groupName + "' not found");
+            sendMessage(error.toString());
+            return;
+        }
+        
+        List<String> members = group.getMembersEmails();
+        System.out.println("Handling group message to " + groupName + " with " + members.size() + " members");
+        
         String messageId = "msg_" + System.currentTimeMillis() + "_" + Integer.toHexString((int) (Math.random() * 10000));
 
         JSONObject routingMessage = new JSONObject();
@@ -198,28 +220,52 @@ public class ClientHandler implements Runnable {
     private void handleCreateGroup(JSONObject messageJson) throws JSONException {
         String groupName = messageJson.getString("groupName");
         JSONArray membersArray = messageJson.getJSONArray("members");
-        List<String> groupMembers = new java.util.ArrayList<>();
+        List<String> groupMembers = new ArrayList<>();
 
         for (int i = 0; i < membersArray.length(); i++) {
             groupMembers.add(membersArray.getString(i));
         }
-        groupMap.put(groupName, groupMembers);
-
-        for (String member : groupMembers) {
-            ClientHandler memberHandler = findClientByEmail(member);
-            if (memberHandler != null) {
-                JSONObject groupCreatedMsg = new JSONObject();
-                groupCreatedMsg.put("type", "group_created");
-                groupCreatedMsg.put("groupName", groupName);
-                groupCreatedMsg.put("info", "You have been added to a new group");
-                memberHandler.sendMessage(groupCreatedMsg.toString());
-            }
+        
+        System.out.println("Creating group " + groupName + " with " + groupMembers.size() + " members");
+        
+        // Add the sender if not already in members list
+        if (!groupMembers.contains(userEmail)) {
+            groupMembers.add(userEmail);
         }
+        
+        // Use GroupService instead of groupMap
+        Group createdGroup = groupService.createGroup(groupName, groupMembers);
+        
+        if (createdGroup != null) {
+            for (String member : groupMembers) {
+                ClientHandler memberHandler = findClientByEmail(member);
+                if (memberHandler != null) {
+                    JSONObject groupCreatedMsg = new JSONObject();
+                    groupCreatedMsg.put("type", "group_created");
+                    groupCreatedMsg.put("groupName", groupName);
+                    groupCreatedMsg.put("info", "You have been added to a new group");
+                    
+                    // Add members list to the notification
+                    JSONArray membersJsonArray = new JSONArray();
+                    for (String m : groupMembers) {
+                        membersJsonArray.put(m);
+                    }
+                    groupCreatedMsg.put("members", membersJsonArray);
+                    
+                    memberHandler.sendMessage(groupCreatedMsg.toString());
+                }
+            }
 
-        JSONObject ack = new JSONObject();
-        ack.put("type", "system");
-        ack.put("content", "Group '" + groupName + "' created successfully!");
-        sendMessage(ack.toString());
+            JSONObject ack = new JSONObject();
+            ack.put("type", "system");
+            ack.put("content", "Group '" + groupName + "' created successfully!");
+            sendMessage(ack.toString());
+        } else {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "Failed to create group '" + groupName + "'");
+            sendMessage(error.toString());
+        }
     }
 
     private void handleHistoryRequest(JSONObject request) throws JSONException {
@@ -274,5 +320,28 @@ public class ClientHandler implements Runnable {
         if (out != null) {
             out.println(message);
         }
+    }
+
+    private void handleGetGroups() throws JSONException {
+        List<Group> userGroups = groupService.getGroupsByUser(userEmail);
+        
+        JSONObject response = new JSONObject();
+        response.put("type", "groups_list");
+        
+        JSONArray groupsArray = new JSONArray();
+        for (Group group : userGroups) {
+            JSONObject groupJson = new JSONObject();
+            groupJson.put("name", group.getGroupName());
+            
+            JSONArray membersArray = new JSONArray();
+            for (String member : group.getMembersEmails()) {
+                membersArray.put(member);
+            }
+            groupJson.put("members", membersArray);
+            groupsArray.put(groupJson);
+        }
+        
+        response.put("groups", groupsArray);
+        sendMessage(response.toString());
     }
 }

@@ -11,7 +11,6 @@ import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.layout.Priority;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -96,6 +95,7 @@ public class ChatController {
                 newTab.setStyle("");
             }
         });
+        Platform.runLater(this::loadGroups);
     
         // Handle window close event to cleanly close socket connection
         Platform.runLater(() -> {
@@ -110,6 +110,26 @@ public class ChatController {
                     System.err.println("Error closing socket: " + e.getMessage());
                 }
             });
+        });
+
+        contactsList.setCellFactory(lv -> new ListCell<String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    // Check if this is a contact (has @) or a group (no @)
+                    if (item.contains("@")) {
+                        setText(item);
+                        setStyle("-fx-font-weight: normal;");
+                    } else {
+                        setText("👥 " + item); // Group icon
+                        setStyle("-fx-font-weight: bold;");
+                    }
+                }
+            }
         });
     }
     
@@ -156,6 +176,7 @@ public class ChatController {
         }
     
         loadContacts();
+        loadGroups(); 
         refreshContactsList();
         addSystemMessage("Connected as " + userEmail);
         startMessageListener();
@@ -224,6 +245,18 @@ public class ChatController {
         });
     }
 
+    public void loadGroups() {
+    try {
+        JSONObject request = new JSONObject();
+        request.put("type", "get_groups");
+        out.println(request.toString());
+        System.out.println("Requesting groups list from server");
+    } catch (JSONException e) {
+        e.printStackTrace();
+        addSystemMessage("Error requesting groups: " + e.getMessage());
+    }
+}
+
     private void handleBroadcastMessage(String sender, String content) {
         storeMessage("All", sender, content, false, false);
         addMessage(sender, content);
@@ -236,6 +269,27 @@ public class ChatController {
             conversationTabPane.getTabs().add(tab);
         }
         conversationTabPane.getSelectionModel().select(tab);
+        
+        // If this is a group, request conversation history differently
+        if (!contactKey.contains("@")) {
+            // This is a group
+            requestGroupHistory(contactKey);
+        } else {
+            // This is an individual contact
+            requestConversationHistory(contactKey);
+        }
+    }
+
+    private void requestGroupHistory(String groupName) {
+        try {
+            JSONObject request = new JSONObject();
+            request.put("type", "GET_GROUP_HISTORY");
+            request.put("groupName", groupName);
+            out.println(request.toString());
+            System.out.println("Requesting history for group: " + groupName);
+        } catch (JSONException e) {
+            addSystemMessage("Error requesting group history: " + e.getMessage());
+        }
     }
 
     private Tab getOrCreateContactTab(String key) {
@@ -431,10 +485,15 @@ public class ChatController {
         try {
             JSONObject msgJson = new JSONObject(message);
             String type = msgJson.getString("type");
+            if ("groups_list".equals(type)) {
+                handleGroupsListResponse(msgJson);
+                return;
+            }
             if ("delivery_receipt".equals(type)) {
                 handleDeliveryReceipt(msgJson);
                 return;
             }
+            
             if ("read_receipt".equals(type)) {
                 handleReadReceipt(msgJson);
                 return;
@@ -460,13 +519,51 @@ public class ChatController {
                 handleHistoryResponse(msgJson);
             } else if ("group_created".equals(type)) {
                 String groupName = msgJson.getString("groupName");
-                contacts.add(groupName);
-                saveContacts();
-                refreshContactsList();
-                addSystemMessage("You have been added to group: " + groupName);
+                System.out.println("Received group_created notification for group: " + groupName);
+                
+                Platform.runLater(() -> {
+                    if (!contacts.contains(groupName)) {
+                        contacts.add(groupName);
+                        saveContacts();
+                        refreshContactsList();
+                        addSystemMessage("You have been added to group: " + groupName);
+                    }
+                });
             }
         } catch (JSONException e) {
             addSystemMessage("Invalid message format: " + message);
+        }
+    }
+
+    private void handleGroupsListResponse(JSONObject response) {
+        try {
+            JSONArray groupsArray = response.getJSONArray("groups");
+            Set<String> groupNames = new HashSet<>();
+            
+            for (int i = 0; i < groupsArray.length(); i++) {
+                JSONObject groupJson = groupsArray.getJSONObject(i);
+                String groupName = groupJson.getString("name");
+                groupNames.add(groupName);
+                
+                // Store group members for later use if needed
+                JSONArray membersArray = groupJson.getJSONArray("members");
+                List<String> members = new ArrayList<>();
+                for (int j = 0; j < membersArray.length(); j++) {
+                    members.add(membersArray.getString(j));
+                }
+                
+                System.out.println("Adding group to contacts list: " + groupName);
+            }
+            
+            // Add groups to contacts and refresh the list
+            Platform.runLater(() -> {
+                contacts.addAll(groupNames);
+                refreshContactsList();
+                addSystemMessage("Groups loaded: " + groupNames.size());
+            });
+        } catch (JSONException e) {
+            e.printStackTrace();
+            addSystemMessage("Error processing groups list: " + e.getMessage());
         }
     }
 
