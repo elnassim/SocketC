@@ -24,7 +24,7 @@ public class SignupController {
     @FXML private Label messageLabel;
 
     private static final Pattern EMAIL_REGEX =
-            Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
+    Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
 
     /* ---------- Actions ---------- */
 
@@ -44,10 +44,16 @@ public class SignupController {
             showError("Invalid email format");
             return;
         }
+        if (pass1.length() < 6) {              // ▼ longueur minimale
+            showError("Password must be at least 6 characters");
+            return;
+        }
         if (!pass1.equals(pass2)) {
             showError("Passwords do not match");
             return;
         }
+        if (pass1.length() < 6) { showError("Password must be ≥ 6 characters"); return; }
+
 
         // --- Appel réseau dans un thread séparé ---
         messageLabel.setText("Registering…");
