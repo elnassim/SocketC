@@ -5,8 +5,8 @@
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.ScrollPane?>
-<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
@@ -17,60 +17,58 @@
             fx:controller="com.chatapp.client.controller.ChatController"
             stylesheets="@../styles.css">
 
-    <!-- Zone supérieure: ajout du bouton Profil -->
+    <!-- Zone supérieure : bouton Profil -->
     <top>
         <HBox spacing="10" alignment="CENTER_RIGHT">
-            <!-- Définition correcte du padding -->
             <padding>
-                <Insets top="10" right="10" bottom="10" left="10" />
+                <Insets top="10" right="10" bottom="10" left="10"/>
             </padding>
             <Button fx:id="profileButton"
                     text="Profil"
                     onAction="#handleProfile"
-                    styleClass="primary-button" />
+                    styleClass="primary-button"/>
         </HBox>
     </top>
 
-    <!-- Panneau gauche : liste des contacts et boutons -->
+    <!-- Panneau gauche : liste des contacts et commandes -->
     <left>
         <VBox styleClass="contacts-panel">
             <HBox styleClass="contacts-header">
                 <Label text="Chats" styleClass="contacts-header-label"/>
             </HBox>
             <HBox styleClass="chat-header">
-                <Label fx:id="contactNameLabel" text="Conversations" 
-                       styleClass="chat-header-label"/>
-                <Button fx:id="logoutButton" text="Logout" 
-                        onAction="#handleLogoutButtonAction" 
-                        styleClass="primary-button" />
+                <Label text="Conversations" styleClass="chat-header-label"/>
+                <Button fx:id="logoutButton"
+                        text="Logout"
+                        onAction="#handleLogoutButtonAction"
+                        styleClass="primary-button"/>
             </HBox>
 
             <HBox styleClass="contacts-search">
-                <TextField fx:id="searchField" promptText="Search contacts..." />
+                <TextField fx:id="searchField" promptText="Search contacts..."/>
             </HBox>
 
-            <ListView fx:id="contactsList" styleClass="contacts-list" />
+            <ListView fx:id="contactsList" styleClass="contacts-list"/>
 
             <Button fx:id="addContactButton"
                     text="Add Contact"
                     onAction="#handleAddContactButton"
-                    styleClass="primary-button" />
+                    styleClass="primary-button"/>
 
             <Button fx:id="showContactsButton"
                     text="Show Contacts (A-Z)"
                     onAction="#handleShowContactsButton"
-                    styleClass="primary-button" />
+                    styleClass="primary-button"/>
 
             <Button fx:id="deleteContactButton"
                     text="Delete Contact"
                     onAction="#handleDeleteContactButton"
-                    styleClass="primary-button" />
+                    styleClass="primary-button"/>
 
-            <!-- *** GROUP FEATURE *** -->
             <Button fx:id="createGroupButton"
                     text="Create Group"
                     onAction="#handleCreateGroupButton"
-                    styleClass="primary-button" />
+                    styleClass="primary-button"/>
         </VBox>
     </left>
 
@@ -78,23 +76,39 @@
     <center>
         <VBox fx:id="chatArea" styleClass="chat-area">
             <HBox styleClass="chat-header">
-                <Label fx:id="contactNameLabel" text="Conversations" styleClass="chat-header-label"/>
+                <Label fx:id="contactNameLabel"
+                       text="Conversations"
+                       styleClass="chat-header-label"/>
             </HBox>
 
-            <!-- TabPane for conversations -->
             <TabPane fx:id="conversationTabPane" VBox.vgrow="ALWAYS">
-                <!-- Default "General" tab for broadcast messages -->
                 <tabs>
                     <Tab text="General" closable="false">
                         <content>
                             <VBox>
-                                <ScrollPane fx:id="messageScrollPane" fitToWidth="true" styleClass="messages-scroll-pane" VBox.vgrow="ALWAYS">
-                                    <VBox fx:id="messageContainer" styleClass="messages-container" />
+                                <ScrollPane fx:id="messageScrollPane"
+                                            fitToWidth="true"
+                                            styleClass="messages-scroll-pane"
+                                            VBox.vgrow="ALWAYS">
+                                    <VBox fx:id="messageContainer"
+                                          styleClass="messages-container"/>
                                 </ScrollPane>
 
-                                <HBox alignment="CENTER" spacing="10" styleClass="message-input-container">
-                                    <TextField fx:id="messageInput" promptText="Type your message..." HBox.hgrow="ALWAYS" />
-                                    <Button fx:id="sendButton" text="Send" onAction="#handleSendButtonAction" styleClass="primary-button" />
+                                <!-- HBox de saisie : audio + texte + envoi -->
+                                <HBox alignment="CENTER"
+                                      spacing="10"
+                                      styleClass="message-input-container">
+                                    <Button fx:id="recordButton"
+                                            text="Record"
+                                            onAction="#handleRecordAudio"
+                                            styleClass="secondary-button"/>
+                                    <TextField fx:id="messageInput"
+                                               promptText="Type your message..."
+                                               HBox.hgrow="ALWAYS"/>
+                                    <Button fx:id="sendButton"
+                                            text="Send"
+                                            onAction="#handleSendButtonAction"
+                                            styleClass="primary-button"/>
                                 </HBox>
                             </VBox>
                         </content>

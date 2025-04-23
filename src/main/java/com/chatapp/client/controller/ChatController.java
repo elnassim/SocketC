@@ -12,6 +12,13 @@ import javafx.stage.Stage;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 
+import javafx.stage.Popup;
+import javafx.util.Duration;
+import javafx.animation.FadeTransition;
+import javafx.animation.PauseTransition;
+import javafx.scene.media.AudioClip;
+
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -19,6 +26,14 @@ import org.json.JSONObject;
 import java.io.*;
 import java.net.Socket;
 import java.util.*;
+
+import javafx.stage.FileChooser;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import javax.sound.sampled.*;
 
 import com.chatapp.common.model.User;
 import com.chatapp.data.dao.ContactDAO;
@@ -49,6 +64,8 @@ public class ChatController {
     @FXML private Button createGroupButton;
     // Bouton Profil tel que défini dans chat-view.fxml
     @FXML private Button profileButton;
+    @FXML private Button sendAudioButton;
+    @FXML private Button recordButton;
 
     /* ---------- Internal Fields ---------- */
     private String userEmail;
@@ -61,10 +78,20 @@ public class ChatController {
     private Map<String, List<MessageData>> conversationMap = new HashMap<>();
     private ClientNetworkService networkService;
     private static final String CONTACTS_FILE_PREFIX = "contacts_";
-    
+    // pour l’enregistrement
+    private TargetDataLine microphone;
+    private ByteArrayOutputStream audioOut;
+    private boolean recording = false;
+
     // Gestion des onglets
     private Map<String, Tab> contactTabs = new HashMap<>();
     private Map<String, VBox> contactMessageContainers = new HashMap<>();
+
+    /* ---------- Notifications ---------- */
+    private static final double NOTIFICATION_SHOW_TIME = 2.5; // secondes
+    private static final String SOUND_PATH = "/sounds/notification.wav"; // à placer dans resources
+    private AudioClip notificationClip;
+    
 
     private static class MessageData {
         String sender;
@@ -82,7 +109,14 @@ public class ChatController {
     @FXML
     public void initialize() {
         messageInput.setOnAction(event -> sendMessage());
-        
+        recordButton.setOnAction(this::handleRecordAudio);
+
+        try {
+            String audioUrl = getClass().getResource(SOUND_PATH).toExternalForm();
+            notificationClip = new AudioClip(audioUrl);
+        } catch (Exception ex) {
+            System.err.println("Notification sound not found (" + SOUND_PATH + ")");
+        }
         // When a contact is clicked, open its conversation tab
         contactsList.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
@@ -95,9 +129,10 @@ public class ChatController {
                 newTab.setStyle("");
             }
         });
+        // charger la liste des groupes après l'affichage de la fenêtre 
         Platform.runLater(this::loadGroups);
     
-        // Handle window close event to cleanly close socket connection
+        // Ce bloc gère la fermeture propre de la fenêtre de cha
         Platform.runLater(() -> {
             Stage stage = (Stage) messageInput.getScene().getWindow();
             stage.setOnCloseRequest(event -> {
@@ -111,7 +146,7 @@ public class ChatController {
                 }
             });
         });
-
+        //personnaliser l’apparence de la liste des contacts
         contactsList.setCellFactory(lv -> new ListCell<String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -132,7 +167,52 @@ public class ChatController {
             }
         });
     }
-    
+     /* ===================== NOTIFICATION UTILITIES ======================= */
+
+     private void showNotification(String text) {
+        Platform.runLater(() -> {
+            try {
+                Stage stage = (Stage) messageInput.getScene().getWindow();
+                if (stage == null) return;
+
+                Popup popup = new Popup();
+                Label label = new Label(text);
+                label.setStyle("-fx-background-color: rgba(50,50,50,0.85); -fx-text-fill: white; -fx-padding: 8 15 8 15; -fx-background-radius: 8; -fx-font-size: 13px;");
+                popup.getContent().add(label);
+                popup.show(stage);
+
+                double centerX = stage.getX() + (stage.getWidth() - label.getWidth()) / 2;
+                double topY = stage.getY() + 40;
+                popup.setX(centerX);
+                popup.setY(topY);
+
+                FadeTransition fadeIn = new FadeTransition(Duration.millis(200), label);
+                fadeIn.setFromValue(0);
+                fadeIn.setToValue(1);
+                fadeIn.play();
+
+                PauseTransition wait = new PauseTransition(Duration.seconds(NOTIFICATION_SHOW_TIME));
+                wait.setOnFinished(e -> {
+                    FadeTransition fadeOut = new FadeTransition(Duration.millis(300), label);
+                    fadeOut.setFromValue(1);
+                    fadeOut.setToValue(0);
+                    fadeOut.setOnFinished(ev -> popup.hide());
+                    fadeOut.play();
+                });
+                wait.play();
+
+                playNotificationSound();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
+    }
+
+    private void playNotificationSound() {
+        if (notificationClip != null) {
+            notificationClip.play();
+        }
+    }
     /**
      * Nouvelle méthode pour ouvrir la vue de gestion du profil.
      * Elle charge le fichier FXML, récupère le contrôleur, transmet l'email de l'utilisateur et affiche la fenêtre.
@@ -157,7 +237,7 @@ public class ChatController {
     }
 
     /**
-     * Initialise la session de chat et configure la connexion.
+     * Mémoriser les infos de la session (utilisateur + communication réseau),
      */
     public void initChatSession(String email, Socket socket, BufferedReader in, PrintWriter out) {
         this.userEmail = email;
@@ -179,7 +259,7 @@ public class ChatController {
         loadGroups(); 
         refreshContactsList();
         addSystemMessage("Connected as " + userEmail);
-        startMessageListener();
+        startMessageListener();// Lance un thread d’écoute en arrière-plan :
     }
 
     private void startMessageListener() {
@@ -197,20 +277,67 @@ public class ChatController {
             }
         }).start();
     }
-    
-    private void requestConversationHistory(String contactEmail) {
+    private AudioFormat getAudioFormat() {
+    float sampleRate = 16000;
+    int sampleSizeInBits = 16;
+    int channels = 1;
+    boolean signed = true;
+    boolean bigEndian = false;
+    return new AudioFormat(sampleRate, sampleSizeInBits, channels, signed, bigEndian);
+}
+    private void handleIncomingMessage(String message) {
         try {
-            System.out.println("Requesting history for: " + contactEmail);
-            JSONObject request = new JSONObject();
-            request.put("type", "GET_HISTORY");
-            request.put("otherUser", contactEmail);
-            out.println(request.toString());
+            JSONObject msgJson = new JSONObject(message);
+            String type = msgJson.getString("type");
+            if ("groups_list".equals(type)) {
+                handleGroupsListResponse(msgJson);
+                return;
+            }
+            if ("delivery_receipt".equals(type)) {
+                handleDeliveryReceipt(msgJson);
+                return;
+            }
+            
+            if ("read_receipt".equals(type)) {
+                handleReadReceipt(msgJson);
+                return;
+            }
+            if ("private".equals(type)) {
+                String content = msgJson.getString("content");
+                if (msgJson.optBoolean("isGroup", false)) {
+                    String groupName = msgJson.getString("groupName");
+                    handleGroupMessage(groupName, msgJson.optString("sender", "Server"), content);
+                } else {
+                    String sender = msgJson.optString("sender", "Server");
+                    sendReadReceipt(msgJson.getString("id"), sender);
+                    handlePrivateMessage(sender, content);
+                }
+            } else if ("broadcast".equals(type)) {
+                String content = msgJson.getString("content");
+                String sender = msgJson.optString("sender", "Server");
+                handleBroadcastMessage(sender, content);
+            } else if ("system".equals(type)) {
+                String content = msgJson.getString("content");
+                addSystemMessage(content);
+            } else if ("HISTORY_RESPONSE".equals(type)) {
+                handleHistoryResponse(msgJson);
+            } else if ("group_created".equals(type)) {
+                String groupName = msgJson.getString("groupName");
+                System.out.println("Received group_created notification for group: " + groupName);
+                
+                Platform.runLater(() -> {
+                    if (!contacts.contains(groupName)) {
+                        contacts.add(groupName);
+                        saveContacts();
+                        refreshContactsList();
+                        addSystemMessage("You have been added to group: " + groupName);
+                    }
+                });
+            }
         } catch (JSONException e) {
-            addSystemMessage("Error requesting chat history: " + e.getMessage());
+            addSystemMessage("Invalid message format: " + message);
         }
     }
-
-    // For one-to-one messages (incoming)
     private void handlePrivateMessage(String sender, String content) {
         storeMessage(sender, sender, content, true, false);
         Platform.runLater(() -> {
@@ -227,8 +354,24 @@ public class ChatController {
             }
             addIncomingMessageToContainer(contactMessageContainers.get(sender), sender, content);
             flashContactTab(sender);
+
+            String preview = content.length() > 60 ? content.substring(0, 57) + "…" : content;
+            showNotification(sender + " : " + preview);
         });
     }
+    private void requestConversationHistory(String contactEmail) {
+        try {
+            System.out.println("Requesting history for: " + contactEmail);
+            JSONObject request = new JSONObject();
+            request.put("type", "GET_HISTORY");
+            request.put("otherUser", contactEmail);
+            out.println(request.toString());
+        } catch (JSONException e) {
+            addSystemMessage("Error requesting chat history: " + e.getMessage());
+        }
+    }
+
+    
 
     // For group messages, use the group name as the conversation key
     private void handleGroupMessage(String groupName, String sender, String content) {
@@ -242,6 +385,9 @@ public class ChatController {
             }
             addIncomingMessageToContainer(contactMessageContainers.get(groupName), sender, content);
             flashContactTab(groupName);
+
+            String preview = content.length() > 60 ? content.substring(0, 57) + "…" : content;
+            showNotification("\uD83D\uDC65 " + groupName + " | " + sender + " : " + preview);
         });
     }
 
@@ -426,6 +572,81 @@ public class ChatController {
             }
         }
     }
+    @FXML
+   
+    private void handleRecordAudio(ActionEvent event) {
+      if (!recording) {
+        // démarrer l’enregistrement
+        try {
+          AudioFormat fmt = getAudioFormat();
+          DataLine.Info info = new DataLine.Info(TargetDataLine.class, fmt);
+          microphone = (TargetDataLine) AudioSystem.getLine(info);
+          microphone.open(fmt);
+          microphone.start();
+    
+          audioOut = new ByteArrayOutputStream();
+          recording = true;
+          recordButton.setText("Stop");
+    
+          // thread qui lit les données du micro
+          new Thread(() -> {
+            byte[] buffer = new byte[4096];
+            while (recording) {
+              int count = microphone.read(buffer, 0, buffer.length);
+              if (count > 0) audioOut.write(buffer, 0, count);
+            }
+          }).start();
+    
+        } catch (Exception ex) {
+          ex.printStackTrace();
+          addSystemMessage("Impossible de démarrer l’enregistrement : " + ex.getMessage());
+        }
+    
+      } else {
+        // arrêter et envoyer
+        recording = false;
+        microphone.stop();
+        microphone.close();
+        recordButton.setText("Record");
+    
+        try {
+          // convertir en WAV dans un byte[]
+          byte[] audioBytes = audioOut.toByteArray();
+          ByteArrayOutputStream wavOut = new ByteArrayOutputStream();
+          AudioInputStream ais = new AudioInputStream(
+              new ByteArrayInputStream(audioBytes),
+              getAudioFormat(),
+              audioBytes.length / getAudioFormat().getFrameSize()
+          );
+          AudioSystem.write(ais, AudioFileFormat.Type.WAVE, wavOut);
+    
+          // encoder et envoyer
+          String b64 = Base64.getEncoder().encodeToString(wavOut.toByteArray());
+          JSONObject audioMsg = new JSONObject();
+          audioMsg.put("type", "audio");
+          String conv = conversationTabPane.getSelectionModel().getSelectedItem().getText();
+          audioMsg.put("conversationId", conv);
+          audioMsg.put("sender", userEmail);
+          audioMsg.put("fileName", "voice_" + System.currentTimeMillis() + ".wav");
+          audioMsg.put("audioData", b64);
+          out.println(audioMsg.toString());
+    
+          addOutgoingAudioToContainer("voice message");
+    
+        } catch (Exception ex) {
+          ex.printStackTrace();
+          addSystemMessage("Erreur envoi vocal : " + ex.getMessage());
+        }
+      }
+    }
+    
+    private void addOutgoingAudioToContainer(String fileName) {
+        HBox box = new HBox(new Label("You sent audio : " + fileName));
+        box.setAlignment(Pos.CENTER_RIGHT);
+        box.getStyleClass().add("bubble-right");
+        messageContainer.getChildren().add(box);
+    }    
+
 
     private void sendPrivateMessage(String recipient, String content) {
         try {
@@ -481,59 +702,7 @@ public class ChatController {
         messageContainer.getChildren().add(box);
     }
 
-    private void handleIncomingMessage(String message) {
-        try {
-            JSONObject msgJson = new JSONObject(message);
-            String type = msgJson.getString("type");
-            if ("groups_list".equals(type)) {
-                handleGroupsListResponse(msgJson);
-                return;
-            }
-            if ("delivery_receipt".equals(type)) {
-                handleDeliveryReceipt(msgJson);
-                return;
-            }
-            
-            if ("read_receipt".equals(type)) {
-                handleReadReceipt(msgJson);
-                return;
-            }
-            if ("private".equals(type)) {
-                String content = msgJson.getString("content");
-                if (msgJson.optBoolean("isGroup", false)) {
-                    String groupName = msgJson.getString("groupName");
-                    handleGroupMessage(groupName, msgJson.optString("sender", "Server"), content);
-                } else {
-                    String sender = msgJson.optString("sender", "Server");
-                    sendReadReceipt(msgJson.getString("id"), sender);
-                    handlePrivateMessage(sender, content);
-                }
-            } else if ("broadcast".equals(type)) {
-                String content = msgJson.getString("content");
-                String sender = msgJson.optString("sender", "Server");
-                handleBroadcastMessage(sender, content);
-            } else if ("system".equals(type)) {
-                String content = msgJson.getString("content");
-                addSystemMessage(content);
-            } else if ("HISTORY_RESPONSE".equals(type)) {
-                handleHistoryResponse(msgJson);
-            } else if ("group_created".equals(type)) {
-                String groupName = msgJson.getString("groupName");
-                System.out.println("Received group_created notification for group: " + groupName);
-                
-                Platform.runLater(() -> {
-                    if (!contacts.contains(groupName)) {
-                        contacts.add(groupName);
-                        saveContacts();
-                        refreshContactsList();
-                        addSystemMessage("You have been added to group: " + groupName);
-                    }
-                });
-            }
-        } catch (JSONException e) {
-            addSystemMessage("Invalid message format: " + message);
-        }
-    }
+    
 
     private void handleGroupsListResponse(JSONObject response) {
         try {
