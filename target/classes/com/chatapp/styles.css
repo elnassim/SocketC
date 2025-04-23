@@ -8,6 +8,10 @@
     -fx-background-color: #00a884;
     -fx-alignment: center-left;
 }
+/* --- messages de statut --------------------------------- */
+.error-message   { -fx-text-fill: #e57373; -fx-font-weight: bold; }
+.success-message { -fx-text-fill: #2e7d32; -fx-font-weight: bold; }
+
 .contacts-header-label {
     -fx-text-fill: white;
     -fx-font-size: 16px;

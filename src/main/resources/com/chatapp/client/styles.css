@@ -9,6 +9,20 @@
   -fx-background-radius: 8;
   -fx-padding: 20;
 }
+/* ====================== Messages de statut ====================== */
+.message-label {
+  -fx-font-size: 12px;
+}
+
+.error-message {
+  -fx-text-fill: #e53935;        /* rouge    */
+  -fx-font-weight: bold;
+}
+
+.success-message {
+  -fx-text-fill: #43a047;        /* vert     */
+  -fx-font-weight: bold;
+}
 
 .header-label {
   -fx-font-size: 18px;

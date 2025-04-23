@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.regex.Pattern;
 
 import com.chatapp.client.network.ClientNetworkService;
 
@@ -45,17 +46,25 @@ public class LoginController {
         // Met le focus sur le champ email lors du chargement du formulaire
         Platform.runLater(() -> emailField.requestFocus());
     }
+    private static final Pattern EMAIL_REGEX =
+    Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
 
     @FXML
     public void handleConnectButtonAction(ActionEvent event) {
-        String email = emailField.getText().trim();
+        String email    = emailField.getText().trim();
         String password = passwordField.getText();
 
-        // Validation des champs
+        /* ▼ Validation côté client */
         if (email.isEmpty() || password.isEmpty()) {
             showError("Please enter both email and password");
             return;
         }
+        if (!EMAIL_REGEX.matcher(email).matches()) {
+            showError("Invalid email format");
+            return;
+        }
+
+        showInfo("Connecting to server…");
 
         messageLabel.setText("Connecting to server...");
         messageLabel.getStyleClass().clear();
@@ -107,7 +116,7 @@ public class LoginController {
         connectionThread.start();
         System.out.println("Connection thread started");
     }
-
+ 
     @FXML
     public void handleSignupButtonAction(ActionEvent event) {
         try {
@@ -130,6 +139,14 @@ public class LoginController {
             messageLabel.getStyleClass().add("error-message");
         }
     }
+   /* ---------- Helpers ---------- */
+private void showInfo(String msg) {
+    messageLabel.setText(msg);
+    messageLabel.getStyleClass().setAll("message-label");
+}
+
+
+
 
     /**
      * Transition vers la vue de chat après authentification réussie.
