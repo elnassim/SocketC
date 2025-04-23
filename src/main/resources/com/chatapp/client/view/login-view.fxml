@@ -9,7 +9,7 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane stylesheets="@../styles.css" xmlns="http://javafx.com/javafx/15.0.1" xmlns:fx="http://javafx.com/fxml/1" 
+<BorderPane stylesheets="@/com/chatapp/client/styles.css" xmlns="http://javafx.com/javafx/15.0.1" xmlns:fx="http://javafx.com/fxml/1" 
           fx:controller="com.chatapp.client.controller.LoginController">
    <center>
       <VBox alignment="CENTER" maxWidth="300.0" spacing="15.0" styleClass="form-container">

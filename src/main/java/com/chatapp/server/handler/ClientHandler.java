@@ -39,38 +39,48 @@ public class ClientHandler implements Runnable {
         this.messageService = new MessageService();
     }
 
+    
     @Override
-    public void run() {
-        try {
-            String credentials = in.readLine();
-            System.out.println("Received credentials: " + credentials);
+public void run() {
+    try {
+        String firstLine = in.readLine();          // ① reçoit la 1ʳᵉ requête
+        System.out.println("Received: " + firstLine);
 
-            try {
-                JSONObject loginRequest = new JSONObject(credentials);
-                String email = loginRequest.getString("email");
-                String password = loginRequest.getString("password");
-                this.userEmail = email;
-                System.out.println("Attempting to authenticate: " + email);
+        JSONObject req = new JSONObject(firstLine);
+        String reqType = req.optString("type", "LOGIN");   // par défaut = login
 
-                if (userService.authenticateUser(email, password)) {
-                    out.println("AUTH_SUCCESS");
-                    System.out.println("User authenticated: " + email);
-                    handleChat();
-                } else {
-                    out.println("AUTH_FAILED");
-                    System.out.println("Authentication failed for: " + email);
-                }
-            } catch (JSONException e) {
-                System.err.println("Error processing JSON: " + e.getMessage());
-                e.printStackTrace();
-                out.println("AUTH_ERROR: Invalid request format");
-            }
-        } catch (IOException e) {
-            System.err.println("Client disconnected: " + clientSocket.getInetAddress());
-        } finally {
-            cleanup();
+        /* ---------- CAS 1 : REGISTER ---------- */
+        if ("REGISTER".equals(reqType)) {
+            String username = req.getString("username");
+            String email    = req.getString("email");
+            String password = req.getString("password");
+
+            boolean created = userService.registerUser(username, password, email);
+            out.println(created ? "REGISTER_SUCCESS" : "REGISTER_FAILED");
+
+            // pas de session chat après inscription → on ferme tout de suite
+            return;   // ← termine le run()
         }
+
+        /* ---------- CAS 2 : LOGIN (déjà présent) ---------- */
+        String email    = req.getString("email");
+        String password = req.getString("password");
+        this.userEmail  = email;
+
+        if (userService.authenticateUser(email, password)) {
+            out.println("AUTH_SUCCESS");
+            handleChat();                               // ↳ boucle message
+        } else {
+            out.println("AUTH_FAILED");
+        }
+
+    } catch (IOException | JSONException e) {
+        System.err.println("Error: " + e.getMessage());
+    } finally {
+        cleanup();
     }
+}
+
 
     private void cleanup() {
         try {

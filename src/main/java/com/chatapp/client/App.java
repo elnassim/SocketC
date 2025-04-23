@@ -6,31 +6,39 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
-/**
- * Main application class for the chat client UI
- */
 public class App extends Application {
 
     @Override
-    public void start(Stage primaryStage) throws Exception {
+    public void start(Stage primaryStage) {
         try {
-            // Load the login view
-            Parent root = FXMLLoader.load(getClass().getResource("/com/chatapp/client/view/login-view.fxml"));
-            primaryStage.setTitle("Chat Client - Login");
-            primaryStage.setScene(new Scene(root, 350, 250));
-            primaryStage.setResizable(false);
+            /* ---------- 1. Charge le FXML ---------- */
+            Parent root = FXMLLoader.load(
+                    getClass().getResource(
+                            "/com/chatapp/client/view/login-view.fxml"));
+
+            /* ---------- 2. Crée la scène SANS taille fixe ---------- */
+            Scene scene = new Scene(root);
+
+            /* ---------- 3. Ajoute la feuille de style globale ---------- */
+            scene.getStylesheets().add(
+                    getClass().getResource(
+                            "/com/chatapp/client/styles.css").toExternalForm());
+
+            /* ---------- 4. Configure le Stage ---------- */
+            primaryStage.setTitle("Chat Client – Login");
+            primaryStage.setScene(scene);
+            primaryStage.sizeToScene();      // adapte la taille au contenu FXML
+            primaryStage.setMinWidth(420);   // limites de confort
+            primaryStage.setMinHeight(480);
+            primaryStage.setResizable(true); // permet à l’utilisateur de l’agrandir
             primaryStage.show();
+
         } catch (Exception e) {
             e.printStackTrace();
             System.err.println("Error loading login view: " + e.getMessage());
         }
     }
-    
-    /**
-     * Main method to launch the application
-     * 
-     * @param args Command line arguments
-     */
+
     public static void main(String[] args) {
         launch(args);
     }

@@ -103,6 +103,24 @@ public class ClientNetworkService {
             }
         }, RETRY_INTERVAL_MS, RETRY_INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
+    public boolean register(String username, String email, String password) throws IOException {
+        Socket socket = new Socket(SERVER_HOST, SERVER_PORT);   // même host/port que pour login
+        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+    
+        // On envoie une requête JSON de type REGISTER
+        JSONObject req = new JSONObject();
+        req.put("type", "REGISTER");
+        req.put("username", username);
+        req.put("email", email);
+        req.put("password", password);
+        out.println(req.toString());
+    
+        String resp = in.readLine();
+        socket.close();
+        return "REGISTER_SUCCESS".equals(resp);
+    }
+    
 
     /**
      * Send a message to the server
