@@ -164,6 +164,7 @@ public boolean deleteGroup(int groupId) {
 
     @Override
     public List<Group> getGroupsByUser(String userEmail) {
+        System.out.println("Fetching groups for user: " + userEmail);
         String query = "SELECT g.id, g.name FROM user_groups g " +
                       "JOIN group_members gm ON g.id = gm.group_id " +
                       "WHERE gm.user_email = ?";
@@ -236,7 +237,7 @@ public boolean deleteGroup(int groupId) {
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
             
-            stmt.setString(1, String.valueOf(groupId));
+            stmt.setInt(1, groupId);
             ResultSet rs = stmt.executeQuery();
             
             while (rs.next()) {

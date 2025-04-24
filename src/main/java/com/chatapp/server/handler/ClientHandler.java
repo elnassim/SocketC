@@ -12,10 +12,15 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.chatapp.server.service.UserService;
+import com.chatapp.server.service.FileService;
 import com.chatapp.server.service.GroupService;
 import com.chatapp.server.service.MessageService;
 import com.chatapp.server.service.GroupService;
+import com.chatapp.common.model.FileMessage;
 import com.chatapp.common.model.Group;
+import com.chatapp.common.model.Message;
+import com.chatapp.data.dao.MessageDAO;
+import com.chatapp.data.dao.impl.MessageDAOImpl;
 
 public class ClientHandler implements Runnable {
     private Socket clientSocket;
@@ -29,6 +34,7 @@ public class ClientHandler implements Runnable {
 
     // Map to store groups (group name -> list of member emails)
     private static final GroupService groupService = new GroupService();
+    private static final FileService fileService = new FileService();
 
     public ClientHandler(Socket socket, List<ClientHandler> clients) throws IOException {
         this.clientSocket = socket;
@@ -99,6 +105,10 @@ public class ClientHandler implements Runnable {
                             handleHistoryRequest(messageJson);
                             break;
 
+                        case "GET_GROUP_HISTORY":
+                            handleGroupHistoryRequest(messageJson);
+                            break;
+
                         case "private":
                             handlePrivateMessage(messageJson);
                             break;
@@ -117,6 +127,17 @@ public class ClientHandler implements Runnable {
                         
                         case "get_groups":
                             handleGetGroups();
+                            break;
+
+                            case "file_upload":
+                            handleFileUpload(messageJson);
+                            break;
+                            
+                        case "file_download":
+                            handleFileDownload(messageJson);
+                            break;
+                        case "group_file_upload":
+                            handleGroupFileUpload(messageJson);
                             break;
 
                         case "disconnect":
@@ -178,23 +199,240 @@ public class ClientHandler implements Runnable {
         System.out.println("Handling group message to " + groupName + " with " + members.size() + " members");
         
         String messageId = "msg_" + System.currentTimeMillis() + "_" + Integer.toHexString((int) (Math.random() * 10000));
+    
+        // Create message object for database storage
+        Message messageObj = new Message(userEmail, content, "group");
+        messageObj.setId(messageId);
+        messageObj.setConversationId("group_" + groupName);
+        messageObj.setTimestamp(System.currentTimeMillis());
+        
+        // Use the direct save method instead of the regular one
+        boolean saved = groupService.ultraDirectSaveGroupMessage(messageObj, groupName);
+        System.out.println("DIRECT SAVE RESULT: " + (saved ? "SUCCESS" : "FAILED"));
 
+        if (!saved) {
+            System.out.println("Message failed to save - running diagnostic:");
+            groupService.debugGroupMessageSaving(groupName);
+        }
+        
+        // Create JSON message for delivery
         JSONObject routingMessage = new JSONObject();
         routingMessage.put("id", messageId);
-        routingMessage.put("type", "group");
+        routingMessage.put("type", "private");
+        routingMessage.put("isGroup", true);
         routingMessage.put("sender", userEmail);
         routingMessage.put("content", content);
         routingMessage.put("groupName", groupName);
-
+        routingMessage.put("timestamp", System.currentTimeMillis());
+        
+        // Send to ALL members, INCLUDING sender (for consistency)
         for (String member : members) {
             ClientHandler memberHandler = findClientByEmail(member);
             if (memberHandler != null) {
+                // Whether it's the sender or not, deliver the message
+                System.out.println("Delivering group message to online member: " + member);
                 memberHandler.sendMessage(routingMessage.toString());
-            } else {
+            } else if (!member.equals(userEmail)) {
+                // For offline users (except self), store as offline message
+                System.out.println("Storing offline message for: " + member);
                 messageService.storeOfflineMessage(member, routingMessage);
             }
         }
     }
+    private void handleGroupHistoryRequest(JSONObject request) throws JSONException {
+        String groupName = request.getString("groupName");
+        System.out.println("History requested for group: " + groupName);
+        
+        try {
+            // Get group messages from database - use the specialized group conversation ID format
+            MessageDAO messageDAO = new MessageDAOImpl();
+            String groupConversationId = "group_" + groupName;
+            List<JSONObject> messages = messageDAO.getGroupMessages(groupConversationId);
+            System.out.println("Found " + messages.size() + " text messages for group: " + groupName);
+            
+            // Get group files from database
+            List<FileMessage> files = fileService.getFilesByConversation(groupConversationId);
+            if (files != null && !files.isEmpty()) {
+                System.out.println("Found " + files.size() + " files for group: " + groupName);
+                
+                for (FileMessage file : files) {
+                    JSONObject fileJson = file.toJson();
+                    fileJson.put("type", "file");
+                    fileJson.put("groupName", groupName);
+                    messages.add(fileJson);
+                }
+            }
+            
+            // Sort all messages by timestamp
+            messages.sort((msg1, msg2) -> {
+                long time1 = msg1.optLong("timestamp", 0);
+                long time2 = msg2.optLong("timestamp", 0);
+                return Long.compare(time1, time2);
+            });
+            
+            // Prepare and send response
+            JSONObject response = new JSONObject();
+            response.put("type", "GROUP_HISTORY_RESPONSE");
+            response.put("groupName", groupName);
+            
+            JSONArray messagesArray = new JSONArray();
+            for (JSONObject message : messages) {
+                messagesArray.put(message);
+            }
+            
+            response.put("messages", messagesArray);
+            sendMessage(response.toString());
+            
+        } catch (Exception e) {
+            System.err.println("Error handling group history request: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Send empty response
+            JSONObject errorResponse = new JSONObject();
+            errorResponse.put("type", "GROUP_HISTORY_RESPONSE");
+            errorResponse.put("groupName", groupName);
+            errorResponse.put("messages", new JSONArray());
+            errorResponse.put("error", "Failed to retrieve history: " + e.getMessage());
+            sendMessage(errorResponse.toString());
+        }
+    }
+
+    // Add these methods to ClientHandler
+private void handleFileUpload(JSONObject messageJson) throws JSONException {
+    String recipient = messageJson.getString("to");
+    String filename = messageJson.getString("filename");
+    String mimeType = messageJson.getString("mimeType");
+    String base64Data = messageJson.getString("data");
+    
+    // Decode base64 data
+    byte[] fileData = java.util.Base64.getDecoder().decode(base64Data);
+    
+    // Save file
+    FileMessage file = fileService.saveFile(userEmail, recipient, filename, fileData, mimeType);
+    
+    if (file != null) {
+        // Notify recipient if online
+        ClientHandler recipientHandler = findClientByEmail(recipient);
+        JSONObject fileNotification = file.toJson();
+        
+        if (recipientHandler != null) {
+            recipientHandler.sendMessage(fileNotification.toString());
+            
+            // Send delivery receipt to sender
+            JSONObject receipt = new JSONObject();
+            receipt.put("type", "file_receipt");
+            receipt.put("fileId", file.getId());
+            receipt.put("status", "delivered");
+            sendMessage(receipt.toString());
+            
+            // Update file status in database
+            fileService.updateFileStatus(file.getId(), true, false);
+        } else {
+            // Store notification for offline delivery
+            JSONObject offlineMsg = new JSONObject();
+            offlineMsg.put("type", "file");
+            offlineMsg.put("id", file.getId());
+            offlineMsg.put("sender", userEmail);
+            offlineMsg.put("filename", filename);
+            offlineMsg.put("mimeType", mimeType);
+            offlineMsg.put("fileSize", fileData.length);
+            messageService.storeOfflineMessage(recipient, offlineMsg);
+            
+            // Send pending receipt to sender
+            JSONObject receipt = new JSONObject();
+            receipt.put("type", "file_receipt");
+            receipt.put("fileId", file.getId());
+            receipt.put("status", "pending");
+            sendMessage(receipt.toString());
+        }
+    } else {
+        // Send error to sender
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "Failed to save file: " + filename);
+        sendMessage(error.toString());
+    }
+}
+    
+
+
+    
+private void handleFileDownload(JSONObject messageJson) throws JSONException {
+    String fileId = messageJson.getString("fileId");
+    
+    // Get file data
+    byte[] fileData = fileService.getFileData(fileId);
+    
+    if (fileData != null) {
+        // Base64 encode for transmission
+        String base64Data = java.util.Base64.getEncoder().encodeToString(fileData);
+        
+        // Send file data to requester
+        JSONObject fileResponse = new JSONObject();
+        fileResponse.put("type", "file_data");
+        fileResponse.put("fileId", fileId);
+        fileResponse.put("data", base64Data);
+        sendMessage(fileResponse.toString());
+        
+        // Mark file as viewed
+        fileService.updateFileStatus(fileId, true, true);
+    } else {
+        // Send error
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "File not found: " + fileId);
+        sendMessage(error.toString());
+    }
+}
+private void handleGroupFileUpload(JSONObject fileUpload) throws JSONException {
+    String groupName = fileUpload.getString("groupName");
+    String filename = fileUpload.getString("filename");
+    String mimeType = fileUpload.getString("mimeType");
+    String base64Data = fileUpload.getString("data");
+    
+    // Decode file data
+    byte[] fileData = java.util.Base64.getDecoder().decode(base64Data);
+    
+    // Save file and metadata
+    FileMessage fileMessage = fileService.saveGroupFile(userEmail, groupName, filename, fileData, mimeType);
+    
+    if (fileMessage != null) {
+        Group group = groupService.findGroupByName(groupName);
+        if (group != null) {
+            // Create notification message for all group members
+            JSONObject fileNotification = fileMessage.toJson();
+            fileNotification.put("type", "file");
+            fileNotification.put("sender", userEmail);
+            fileNotification.put("groupName", groupName);
+            
+            // Notify all group members
+            for (String member : group.getMembersEmails()) {
+                if (!member.equals(userEmail)) { // Don't send to self
+                    ClientHandler memberHandler = findClientByEmail(member);
+                    if (memberHandler != null) {
+                        memberHandler.sendMessage(fileNotification.toString());
+                    } else {
+                        // Store for offline delivery
+                        messageService.storeOfflineMessage(member, fileNotification);
+                    }
+                }
+            }
+            
+            // Confirm file was uploaded to sender
+            JSONObject confirmation = new JSONObject();
+            confirmation.put("type", "file_receipt");
+            confirmation.put("fileId", fileMessage.getId());
+            confirmation.put("status", "Delivered to server");
+            sendMessage(confirmation.toString());
+        }
+    } else {
+        // Send error message back to sender
+        JSONObject error = new JSONObject();
+        error.put("type", "error");
+        error.put("content", "Failed to upload file: " + filename);
+        sendMessage(error.toString());
+    }
+}
 
     private void handleBroadcastMessage(JSONObject messageJson) throws JSONException {
         String content = messageJson.getString("content");
@@ -270,18 +508,57 @@ public class ClientHandler implements Runnable {
 
     private void handleHistoryRequest(JSONObject request) throws JSONException {
         String otherUser = request.getString("otherUser");
-        List<JSONObject> history = messageService.getMessageHistory(userEmail, otherUser);
-
-        JSONObject response = new JSONObject();
-        response.put("type", "HISTORY_RESPONSE");
-
-        JSONArray messagesArray = new JSONArray();
-        for (JSONObject message : history) {
-            messagesArray.put(message);
+        System.out.println("History requested between " + userEmail + " and " + otherUser);
+        
+        try {
+            List<JSONObject> history = messageService.getMessageHistory(userEmail, otherUser);
+            System.out.println("Found " + history.size() + " total messages in history");
+            
+            // Check if this is a group chat request
+            boolean isGroup = !otherUser.contains("@");
+            if (isGroup) {
+                try {
+                    // Add group files to history
+                    List<FileMessage> groupFiles = fileService.getFilesByConversation("group_" + otherUser);
+                    if (groupFiles != null) {
+                        for (FileMessage file : groupFiles) {
+                            JSONObject fileJson = file.toJson();
+                            fileJson.put("type", "file");
+                            fileJson.put("groupName", otherUser);
+                            history.add(fileJson);
+                        }
+                        
+                        // Re-sort by timestamp
+                        history.sort((msg1, msg2) -> {
+                            long time1 = msg1.optLong("timestamp", 0);
+                            long time2 = msg2.optLong("timestamp", 0);
+                            return Long.compare(time1, time2);
+                        });
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error adding group files to history: " + e.getMessage());
+                }
+            }
+            
+            JSONObject response = new JSONObject();
+            response.put("type", "HISTORY_RESPONSE");
+            JSONArray messagesArray = new JSONArray();
+            for (JSONObject message : history) {
+                messagesArray.put(message);
+            }
+            response.put("messages", messagesArray);
+            sendMessage(response.toString());
+        } catch (Exception e) {
+            System.err.println("Error handling history request: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Send empty response to avoid client waiting indefinitely
+            JSONObject errorResponse = new JSONObject();
+            errorResponse.put("type", "HISTORY_RESPONSE");
+            errorResponse.put("messages", new JSONArray());
+            errorResponse.put("error", "Failed to retrieve history: " + e.getMessage());
+            sendMessage(errorResponse.toString());
         }
-
-        response.put("messages", messagesArray);
-        sendMessage(response.toString());
     }
 
     private void sendOfflineMessages() {
