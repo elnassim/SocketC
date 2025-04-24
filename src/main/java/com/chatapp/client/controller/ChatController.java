@@ -18,6 +18,7 @@ import org.json.JSONObject;
 
 import java.io.*;
 import java.net.Socket;
+import java.net.URL;
 import java.util.*;
 
 import com.chatapp.common.model.User;
@@ -140,19 +141,54 @@ public class ChatController {
     @FXML
     private void handleProfile(ActionEvent event) {
         try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/profile-view.fxml"));
+            // Debug print to check userEmail
+            System.out.println("Current userEmail: " + userEmail);
+            
+            // Get the resource using different methods to debug
+            String fxmlPath = "/com/chatapp/client/view/profile-view.fxml";
+            URL resource = getClass().getResource(fxmlPath);
+            if (resource == null) {
+                // Try alternative loading methods
+                resource = getClass().getClassLoader().getResource("com/chatapp/client/view/profile-view.fxml");
+                if (resource == null) {
+                    System.err.println("Could not find profile-view.fxml in any location");
+                    addSystemMessage("Error: Could not find profile view file");
+                    return;
+                }
+            }
+            
+            System.out.println("Found FXML at: " + resource.toExternalForm());
+            
+            FXMLLoader loader = new FXMLLoader(resource);
             Parent profileRoot = loader.load();
-            // Récupère le contrôleur associé et initialise les données du profil.
+            
+            // Debug print before getting controller
+            System.out.println("FXML loaded successfully, getting controller...");
+            
             ProfileController profileController = loader.getController();
+            if (profileController == null) {
+                System.err.println("Failed to get ProfileController instance");
+                addSystemMessage("Error: Could not initialize profile controller");
+                return;
+            }
+            
+            System.out.println("Initializing profile data with email: " + userEmail);
             profileController.initData(userEmail);
+            
             Scene profileScene = new Scene(profileRoot);
             Stage profileStage = new Stage();
-            profileStage.setTitle("Gestion du profil");
+            profileStage.setTitle("Profile Settings");
             profileStage.setScene(profileScene);
             profileStage.show();
+            
         } catch (IOException e) {
+            System.err.println("IOException while loading profile view:");
             e.printStackTrace();
-            addSystemMessage("Erreur lors de l'ouverture de la vue de profil.");
+            addSystemMessage("Error loading profile view: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Unexpected error while loading profile view:");
+            e.printStackTrace();
+            addSystemMessage("Unexpected error: " + e.getMessage());
         }
     }
 

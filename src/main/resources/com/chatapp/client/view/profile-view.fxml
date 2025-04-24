@@ -9,22 +9,26 @@
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<BorderPane stylesheets="@styles.css" xmlns="http://javafx.com/javafx/15.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.chatapp.LoginController">
+<BorderPane stylesheets="@../styles.css" xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.chatapp.client.controller.ProfileController">
    <center>
       <VBox alignment="CENTER" maxWidth="300.0" spacing="15.0" styleClass="form-container">
          <children>
-            <Label styleClass="header-label" text="Chat Application Login">
+            <Label styleClass="header-label" text="Profile Settings">
                <font>
                   <Font name="System Bold" size="18.0" />
                </font>
             </Label>
+            <Label text="Email" />
+            <Label fx:id="emailLabel" styleClass="readonly-field" />
             <Label text="Username" />
-            <TextField fx:id="usernameField" promptText="Enter username" />
+            <TextField fx:id="usernameField" promptText="Enter new username" />
             <Label text="Password" />
-            <PasswordField fx:id="passwordField" promptText="Enter password" />
-            <Button fx:id="loginButton" defaultButton="true" onAction="#handleLoginButtonAction" styleClass="primary-button" text="Login" />
-            <Button fx:id="signupButton" onAction="#handleSignupButtonAction" styleClass="secondary-button" text="Sign Up" />
-            <Label fx:id="messageLabel" alignment="CENTER" styleClass="message-label" />
+            <PasswordField fx:id="passwordField" promptText="Enter new password" />
+            <Button fx:id="saveButton" defaultButton="true" onAction="#handleSaveProfile" styleClass="primary-button" text="Save Changes" />
+            <Button fx:id="cancelButton" onAction="#handleCancel" styleClass="secondary-button" text="Cancel" />
+            <Label fx:id="statusLabel" alignment="CENTER" styleClass="message-label" />
          </children>
          <padding>
             <Insets bottom="20.0" left="20.0" right="20.0" top="20.0" />
