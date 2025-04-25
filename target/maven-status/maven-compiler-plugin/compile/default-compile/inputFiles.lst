@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\data\dao\UserDAO.java
 C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\data\dao\impl\MessageDAOImpl.java
 C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\data\dao\GroupDAO.java
@@ -31,3 +32,42 @@ C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\client\controlle
 C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\data\dao\impl\ContactDAOImpl.java
 C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\server\service\MessageService.java
 C:\xampp\htdocs\socketcc\VV25\SocketC\src\main\java\com\chatapp\data\dao\impl\GroupDAOImpl.java
+=======
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\common\model\Message.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\db\DatabaseUtils.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\impl\GroupDAOImpl.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\service\GroupService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\controller\CheckBoxListCell.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\impl\MessageDAOImpl.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\db\DatabaseConfig.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\impl\UserDAOImpl.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\repository\UserRepository.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\UserDAO.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\controller\LoginController.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\impl\ContactDAOImpl.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\common\util\MessageValidator.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\controller\ChatController.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\service\DatabaseStartupService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\common\model\User.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\controller\ProfileController.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\service\ConversationService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\network\MessageCache.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\handler\ClientHandler.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\common\model\Group.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\util\MigrationTool.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\db\DatabaseManager.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\controller\CreateGroupController.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\impl\FileDAOImpl.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\App.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\FileDAO.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\GroupDAO.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\controller\SignupController.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\client\network\ClientNetworkService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\service\MessageService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\common\model\FileMessage.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\ContactDAO.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\data\dao\MessageDAO.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\service\FileService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\service\UserService.java
+C:\wamp64\www\SocketProject\src\main\java\com\chatapp\server\Server.java
+>>>>>>> backup-master

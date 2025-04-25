@@ -32,16 +32,9 @@ public class ConversationService {
      * (Ancienne version basée sur les fichiers JSON remplacée par un appel direct au DAO.)
      */
     public void saveMessage(Message message) {
-        if (message.getConversationId() == null) {
-            System.err.println("Cannot save message without conversation ID");
-            return;
-        }
-        
         MessageDAO messageDAO = new MessageDAOImpl();
         if (messageDAO.save(message)) {
             System.out.println("Message saved into DB for conversation " + message.getConversationId());
-        } else {
-            System.err.println("Error saving message into DB for conversation " + message.getConversationId());
         }
     }
     
@@ -73,74 +66,74 @@ public class ConversationService {
     /**
      * Load conversation history from file. (Deprecated for DB storage)
      */
-    private List<JSONObject> loadHistory(String filename) {
-        File file = new File(filename);
-        if (!file.exists()) {
-            return new ArrayList<>();
-        }
+    // private List<JSONObject> loadHistory(String filename) {
+    //     File file = new File(filename);
+    //     if (!file.exists()) {
+    //         return new ArrayList<>();
+    //     }
         
-        try {
-            String content = new String(Files.readAllBytes(Paths.get(filename)));
-            if (content.trim().isEmpty()) {
-                return new ArrayList<>();
-            }
+    //     try {
+    //         String content = new String(Files.readAllBytes(Paths.get(filename)));
+    //         if (content.trim().isEmpty()) {
+    //             return new ArrayList<>();
+    //         }
             
-            JSONArray jsonArray = new JSONArray(content);
-            List<JSONObject> messages = new ArrayList<>();
+    //         JSONArray jsonArray = new JSONArray(content);
+    //         List<JSONObject> messages = new ArrayList<>();
             
-            for (int i = 0; i < jsonArray.length(); i++) {
-                messages.add(jsonArray.getJSONObject(i));
-            }
+    //         for (int i = 0; i < jsonArray.length(); i++) {
+    //             messages.add(jsonArray.getJSONObject(i));
+    //         }
             
-            return messages;
-        } catch (IOException e) {
-            System.err.println("Error loading conversation history: " + e.getMessage());
-            return new ArrayList<>();
-        } catch (JSONException e) {
-            System.err.println("Error parsing conversation file: " + e.getMessage());
-            // En cas d'erreur, sauvegarder une copie de sauvegarde
-            try {
-                File backup = new File(filename + ".bak");
-                Files.copy(Paths.get(filename), new FileOutputStream(backup));
-                System.err.println("Backed up corrupted file to: " + backup.getPath());
-            } catch (IOException ex) {
-                System.err.println("Failed to backup corrupted file: " + ex.getMessage());
-            }
-            return new ArrayList<>();
-        }
-    }
+    //         return messages;
+    //     } catch (IOException e) {
+    //         System.err.println("Error loading conversation history: " + e.getMessage());
+    //         return new ArrayList<>();
+    //     } catch (JSONException e) {
+    //         System.err.println("Error parsing conversation file: " + e.getMessage());
+    //         // En cas d'erreur, sauvegarder une copie de sauvegarde
+    //         try {
+    //             File backup = new File(filename + ".bak");
+    //             Files.copy(Paths.get(filename), new FileOutputStream(backup));
+    //             System.err.println("Backed up corrupted file to: " + backup.getPath());
+    //         } catch (IOException ex) {
+    //             System.err.println("Failed to backup corrupted file: " + ex.getMessage());
+    //         }
+    //         return new ArrayList<>();
+    //     }
+    // }
     
     /**
      * Save conversation history to file. (Deprecated for DB storage)
      */
-    private void saveToFile(String filename, List<JSONObject> messages) {
-        try {
-            JSONArray jsonArray = new JSONArray();
-            for (JSONObject message : messages) {
-                jsonArray.put(message);
-            }
+    // private void saveToFile(String filename, List<JSONObject> messages) {
+    //     try {
+    //         JSONArray jsonArray = new JSONArray();
+    //         for (JSONObject message : messages) {
+    //             jsonArray.put(message);
+    //         }
             
-            System.out.println("DEBUG: Saving to file: " + filename);
-            System.out.println("DEBUG: Content size: " + jsonArray.toString().length() + " bytes");
+    //         System.out.println("DEBUG: Saving to file: " + filename);
+    //         System.out.println("DEBUG: Content size: " + jsonArray.toString().length() + " bytes");
             
-            // Création du répertoire parent si nécessaire
-            File file = new File(filename);
-            if (!file.getParentFile().exists()) {
-                boolean created = file.getParentFile().mkdirs();
-                System.out.println("DEBUG: Created parent directories: " + created);
-            }
+    //         // Création du répertoire parent si nécessaire
+    //         File file = new File(filename);
+    //         if (!file.getParentFile().exists()) {
+    //             boolean created = file.getParentFile().mkdirs();
+    //             System.out.println("DEBUG: Created parent directories: " + created);
+    //         }
             
-            Files.write(Paths.get(filename), jsonArray.toString().getBytes());
+    //         Files.write(Paths.get(filename), jsonArray.toString().getBytes());
             
-            File savedFile = new File(filename);
-            if (savedFile.exists()) {
-                System.out.println("DEBUG: File saved successfully, size: " + savedFile.length() + " bytes");
-            } else {
-                System.err.println("ERROR: Failed to save file - file does not exist after write operation");
-            }
-        } catch (IOException e) {
-            System.err.println("Error saving conversation history: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
+    //         File savedFile = new File(filename);
+    //         if (savedFile.exists()) {
+    //             System.out.println("DEBUG: File saved successfully, size: " + savedFile.length() + " bytes");
+    //         } else {
+    //             System.err.println("ERROR: Failed to save file - file does not exist after write operation");
+    //         }
+    //     } catch (IOException e) {
+    //         System.err.println("Error saving conversation history: " + e.getMessage());
+    //         e.printStackTrace();
+    //     }
+    // }
 }

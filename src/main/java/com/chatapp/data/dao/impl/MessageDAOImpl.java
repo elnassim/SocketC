@@ -11,14 +11,23 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class MessageDAOImpl implements MessageDAO {
 
     @Override
     public boolean save(Message message) {
+        System.out.println("Attempting to save message: " + message.getId());
+        System.out.println("  Type: " + message.getType());
+        System.out.println("  Conversation ID: " + message.getConversationId());
+        
         // First ensure conversation exists
-        ensureConversationExists(message.getConversationId());
+        boolean conversationCreated = ensureConversationExists(message.getConversationId());
+        if (!conversationCreated) {
+            System.err.println("Failed to create conversation - cannot save message");
+            return false;
+        }
         
         String query = "INSERT INTO messages (id, sender_email, conversation_id, content, type, status, " +
                 "timestamp, delivered, read_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -37,7 +46,7 @@ public class MessageDAOImpl implements MessageDAO {
             stmt.setBoolean(9, message.isRead());
             
             int rowsAffected = stmt.executeUpdate();
-            System.out.println("Saved message with ID: " + message.getId());
+            System.out.println("Message save result: " + (rowsAffected > 0 ? "SUCCESS" : "FAILED"));
             return rowsAffected > 0;
         } catch (SQLException e) {
             System.err.println("Database error saving message: " + e.getMessage());
@@ -45,14 +54,19 @@ public class MessageDAOImpl implements MessageDAO {
             return false;
         }
     }
+    
+    // In MessageDAOImpl.java, update getConversationHistory method:
 
     @Override
     public List<JSONObject> getConversationHistory(String user1, String user2) {
-        // Generate conversation ID using the same algorithm as in ConversationService
+        // Generate conversation ID the same way as when saving messages
         String conversationId = generateConversationId(user1, user2);
+        System.out.println("Fetching history for conversation ID: " + conversationId);
         
-        String query = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC";
         List<JSONObject> messages = new ArrayList<>();
+        
+        // Query to get all messages in this conversation
+        String query = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC";
         
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -67,7 +81,6 @@ public class MessageDAOImpl implements MessageDAO {
                 message.put("conversationId", rs.getString("conversation_id"));
                 message.put("content", rs.getString("content"));
                 message.put("type", rs.getString("type"));
-                message.put("status", rs.getString("status"));
                 message.put("timestamp", rs.getLong("timestamp"));
                 message.put("delivered", rs.getBoolean("delivered"));
                 message.put("read", rs.getBoolean("read_status"));
@@ -75,12 +88,23 @@ public class MessageDAOImpl implements MessageDAO {
                 messages.add(message);
             }
             
+            System.out.println("Found " + messages.size() + " messages in conversation");
             return messages;
-        } catch (SQLException | JSONException e) {
-            System.err.println("Database error retrieving conversation history: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Error retrieving conversation history: " + e.getMessage());
             e.printStackTrace();
             return new ArrayList<>();
         }
+    }
+    
+    private String generateConversationId(String user1, String user2) {
+        // Sort emails to ensure the same ID regardless of order
+        if (user1.compareTo(user2) > 0) {
+            String temp = user1;
+            user1 = user2;
+            user2 = temp;
+        }
+        return user1 + "_" + user2;
     }
 
     @Override
@@ -104,6 +128,51 @@ public class MessageDAOImpl implements MessageDAO {
         }
     }
 
+    @Override
+public List<JSONObject> getGroupMessages(String groupConversationId) {
+    // Ensure the conversation ID has the correct prefix
+    if (!groupConversationId.startsWith("group_")) {
+        groupConversationId = "group_" + groupConversationId;
+    }
+    
+    System.out.println("Fetching messages for group conversation: " + groupConversationId);
+    
+    // Initialize the messages list before using it
+    List<JSONObject> messages = new ArrayList<>();
+    
+    // Query to get all messages for this group
+    String query = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC";
+    
+    try (Connection conn = DatabaseManager.getConnection();
+         PreparedStatement stmt = conn.prepareStatement(query)) {
+        
+        stmt.setString(1, groupConversationId);
+        ResultSet rs = stmt.executeQuery();
+        
+        while (rs.next()) {
+            JSONObject message = new JSONObject();
+            message.put("id", rs.getString("id"));
+            message.put("sender", rs.getString("sender_email"));
+            message.put("conversationId", rs.getString("conversation_id"));
+            message.put("content", rs.getString("content"));
+            message.put("type", rs.getString("type"));
+            message.put("timestamp", rs.getLong("timestamp"));
+            message.put("delivered", rs.getBoolean("delivered"));
+            message.put("read", rs.getBoolean("read_status"));
+            message.put("isGroup", true);  // Add this flag to identify it as a group message
+            message.put("groupName", groupConversationId.substring(6));  // Remove 'group_' prefix
+            
+            messages.add(message);
+        }
+        
+        System.out.println("Found " + messages.size() + " messages for group with ID: " + groupConversationId);
+        return messages;
+    } catch (Exception e) {
+        System.err.println("Error retrieving group messages: " + e.getMessage());
+        e.printStackTrace();
+        return new ArrayList<>();
+    }
+}
     @Override
     public List<String> getOfflineMessages(String userEmail) {
         // Find all conversations where this user is a participant
@@ -161,55 +230,113 @@ public class MessageDAOImpl implements MessageDAO {
     }
     
     private boolean ensureConversationExists(String conversationId) {
-        // Check if conversation exists
-        String checkQuery = "SELECT COUNT(*) FROM conversations WHERE id = ?";
-        String insertQuery = "INSERT INTO conversations (id, is_group) VALUES (?, false)";
+        boolean isGroup = conversationId.startsWith("group_");
+        String groupName = isGroup ? conversationId.substring(6) : null;
         
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement checkStmt = conn.prepareStatement(checkQuery)) {
-            
-            checkStmt.setString(1, conversationId);
-            ResultSet rs = checkStmt.executeQuery();
-            
-            if (rs.next() && rs.getInt(1) == 0) {
-                // Conversation doesn't exist, create it
-                try (PreparedStatement insertStmt = conn.prepareStatement(insertQuery)) {
-                    insertStmt.setString(1, conversationId);
-                    insertStmt.executeUpdate();
-                    
-                    // Add conversation participants
-                    String[] participants = conversationId.split("_");
-                    if (participants.length >= 2) {
-                        addConversationParticipant(conn, conversationId, participants[0]);
-                        addConversationParticipant(conn, conversationId, participants[1]);
+        try (Connection conn = DatabaseManager.getConnection()) {
+            // Check if conversation exists
+            String checkQuery = "SELECT COUNT(*) FROM conversations WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(checkQuery)) {
+                stmt.setString(1, conversationId);
+                ResultSet rs = stmt.executeQuery();
+                
+                if (rs.next() && rs.getInt(1) == 0) {
+                    System.out.println("Creating new conversation: " + conversationId);
+                    // Create conversation if it doesn't exist
+                    String insertQuery = "INSERT INTO conversations (id, is_group) VALUES (?, ?)";
+                    try (PreparedStatement insertStmt = conn.prepareStatement(insertQuery)) {
+                        insertStmt.setString(1, conversationId);
+                        insertStmt.setBoolean(2, isGroup);
+                        insertStmt.executeUpdate();
                     }
                     
-                    System.out.println("Created new conversation: " + conversationId);
+                    if (isGroup) {
+                        System.out.println("Adding group members as participants for: " + groupName);
+                        addGroupMembersAsParticipants(conn, conversationId, groupName);
+                    }
                 }
             }
-            return true;
+            return true; // Conversation now exists
         } catch (SQLException e) {
-            System.err.println("Database error checking/creating conversation: " + e.getMessage());
+            System.err.println("Database error ensuring conversation exists: " + e.getMessage());
             e.printStackTrace();
             return false;
         }
     }
     
+   
+
+    // Add this method in MessageDAOImpl
+private void addGroupMembersAsParticipants(Connection conn, String conversationId, String groupName) {
+    try {
+        // First, get all group members
+        String queryMembers = "SELECT user_email FROM group_members JOIN user_groups ON group_members.group_id = user_groups.id WHERE user_groups.name = ?";
+        List<String> members = new ArrayList<>();
+        
+        try (PreparedStatement stmt = conn.prepareStatement(queryMembers)) {
+            stmt.setString(1, groupName);
+            ResultSet rs = stmt.executeQuery();
+            
+            while (rs.next()) {
+                members.add(rs.getString("user_email"));
+            }
+        }
+        
+        System.out.println("Adding " + members.size() + " members as participants to conversation: " + conversationId);
+        
+        // Now add each member as a participant
+        String addParticipantQuery = "INSERT INTO conversation_participants (conversation_id, user_email) VALUES (?, ?)";
+        try (PreparedStatement stmt = conn.prepareStatement(addParticipantQuery)) {
+            for (String member : members) {
+                stmt.setString(1, conversationId);
+                stmt.setString(2, member);
+                try {
+                    stmt.executeUpdate();
+                    System.out.println("Added " + member + " to conversation " + conversationId);
+                } catch (SQLException e) {
+                    if (e.getMessage().contains("Duplicate entry")) {
+                        System.out.println("User " + member + " already a participant in conversation " + conversationId);
+                    } else {
+                        throw e; // Rethrow if it's a different error
+                    }
+                }
+            }
+        }
+    } catch (SQLException e) {
+        System.err.println("Error adding group members as participants: " + e.getMessage());
+        e.printStackTrace();
+    }
+}
     private void addConversationParticipant(Connection conn, String conversationId, String userEmail) throws SQLException {
+        // First check if participant already exists
+        String checkQuery = "SELECT COUNT(*) FROM conversation_participants WHERE conversation_id = ? AND user_email = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(checkQuery)) {
+            stmt.setString(1, conversationId);
+            stmt.setString(2, userEmail);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next() && rs.getInt(1) > 0) {
+                // Participant already exists
+                return;
+            }
+        }
+        
+        // Add participant if they don't exist
         String query = "INSERT INTO conversation_participants (conversation_id, user_email) VALUES (?, ?)";
         try (PreparedStatement stmt = conn.prepareStatement(query)) {
             stmt.setString(1, conversationId);
             stmt.setString(2, userEmail);
             stmt.executeUpdate();
+            System.out.println("Added user " + userEmail + " as participant in conversation " + conversationId);
+        } catch (SQLException e) {
+            if (e.getErrorCode() == 1062) { // MySQL duplicate entry error
+                // Ignore duplicate entry errors
+                System.out.println("User " + userEmail + " already a participant in conversation " + conversationId);
+            } else {
+                throw e; // Rethrow if it's a different error
+            }
         }
     }
     
-    private String generateConversationId(String user1, String user2) {
-        // Ensure deterministic ordering regardless of parameter order
-        if (user1.compareTo(user2) <= 0) {
-            return user1 + "_" + user2;
-        } else {
-            return user2 + "_" + user1;
-        }
-    }
+    
 }

@@ -3,12 +3,20 @@ com\chatapp\client\controller\SignupController.class
 com\chatapp\data\dao\impl\ContactDAOImpl.class
 com\chatapp\common\model\Group.class
 com\chatapp\common\util\MessageValidator.class
+<<<<<<< HEAD
+=======
+com\chatapp\data\dao\impl\FileDAOImpl.class
+>>>>>>> backup-master
 com\chatapp\data\dao\impl\MessageDAOImpl.class
 com\chatapp\client\network\MessageCache.class
 com\chatapp\util\MigrationTool.class
 com\chatapp\server\service\GroupService.class
 com\chatapp\client\controller\ChatController$1.class
 com\chatapp\client\network\ClientNetworkService.class
+<<<<<<< HEAD
+=======
+com\chatapp\server\service\FileService.class
+>>>>>>> backup-master
 com\chatapp\data\dao\MessageDAO.class
 com\chatapp\client\controller\CheckBoxListCell.class
 com\chatapp\server\handler\ClientHandler.class
@@ -17,6 +25,10 @@ com\chatapp\server\service\MessageService.class
 com\chatapp\server\Server.class
 com\chatapp\client\App.class
 com\chatapp\common\model\User.class
+<<<<<<< HEAD
+=======
+com\chatapp\data\dao\FileDAO.class
+>>>>>>> backup-master
 com\chatapp\server\service\ConversationService.class
 com\chatapp\data\db\DatabaseManager.class
 com\chatapp\server\service\UserService.class
@@ -28,6 +40,10 @@ com\chatapp\client\controller\ProfileController.class
 com\chatapp\data\dao\impl\UserDAOImpl.class
 com\chatapp\client\controller\LoginController.class
 com\chatapp\data\db\DatabaseUtils.class
+<<<<<<< HEAD
+=======
+com\chatapp\common\model\FileMessage.class
+>>>>>>> backup-master
 com\chatapp\data\service\DatabaseStartupService.class
 com\chatapp\data\db\DatabaseConfig.class
 com\chatapp\client\controller\CreateGroupController.class
