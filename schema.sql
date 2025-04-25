@@ -16,11 +16,11 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    id VARCHAR(255) PRIMARY KEY, -- Using your existing ID format
+    id VARCHAR(255) PRIMARY KEY,
     sender_email VARCHAR(255) NOT NULL,
     conversation_id VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
-    type VARCHAR(20) NOT NULL, -- private, broadcast, etc.
+    type VARCHAR(20) NOT NULL, -- private, group, broadcast
     status VARCHAR(20) NOT NULL, -- SENT, DELIVERED, READ
     timestamp BIGINT NOT NULL,
     delivered BOOLEAN DEFAULT FALSE,
@@ -62,4 +62,13 @@ CREATE TABLE IF NOT EXISTS group_members (
     PRIMARY KEY (group_id, user_email),
     FOREIGN KEY (group_id) REFERENCES user_groups(id),
     FOREIGN KEY (user_email) REFERENCES users(email)
+);
+
+CREATE TABLE IF NOT EXISTS group_conversations (
+    group_id INT NOT NULL,
+    conversation_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (group_id, conversation_id),
+    FOREIGN KEY (group_id) REFERENCES user_groups(id),
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id)
 );

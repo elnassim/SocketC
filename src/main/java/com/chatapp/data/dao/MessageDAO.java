@@ -6,8 +6,9 @@ import java.util.List;
 
 public interface MessageDAO {
     boolean save(Message message);
-    List<JSONObject> getConversationHistory(String user1, String user2);
+    List<JSONObject> getConversationHistory(String conversationId);
     boolean updateStatus(String messageId, Message.Status status);
     List<String> getOfflineMessages(String userEmail);
     boolean deleteMessage(String messageId);
+    List<JSONObject> getGroupMessages(int groupId);
 }

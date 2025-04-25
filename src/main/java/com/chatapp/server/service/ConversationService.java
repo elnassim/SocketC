@@ -19,10 +19,13 @@ public class ConversationService {
     // sont conservées ici pour référence, mais ne seront plus utilisées dans la nouvelle version.
     // La méthode generateConversationId reste inchangée.
     
+    private final MessageDAO messageDAO;
+    
     /**
      * Constructor that initializes the ConversationService.
      */
     public ConversationService() {
+        this.messageDAO = new MessageDAOImpl();
         // Vous pouvez conserver un message de debug pour vérifier l'initialisation.
         System.out.println("DEBUG: Initializing ConversationService for DB storage");
     }
@@ -31,27 +34,17 @@ public class ConversationService {
      * Save a message to conversation history directly in the database.
      * (Ancienne version basée sur les fichiers JSON remplacée par un appel direct au DAO.)
      */
-    public void saveMessage(Message message) {
-        if (message.getConversationId() == null) {
-            System.err.println("Cannot save message without conversation ID");
-            return;
-        }
-        
-        MessageDAO messageDAO = new MessageDAOImpl();
-        if (messageDAO.save(message)) {
-            System.out.println("Message saved into DB for conversation " + message.getConversationId());
-        } else {
-            System.err.println("Error saving message into DB for conversation " + message.getConversationId());
-        }
+    public boolean saveMessage(Message message) {
+        return messageDAO.save(message);
     }
     
     /**
      * Load conversation history between two users from the database.
-     * (Remplace l’ancienne lecture des fichiers JSON.)
+     * (Remplace l'ancienne lecture des fichiers JSON.)
      */
     public List<JSONObject> getConversationHistory(String user1, String user2) {
-        MessageDAO messageDAO = new MessageDAOImpl();
-        return messageDAO.getConversationHistory(user1, user2);
+        String conversationId = generateConversationId(user1, user2);
+        return messageDAO.getConversationHistory(conversationId);
     }
     
     /**
@@ -59,7 +52,7 @@ public class ConversationService {
      * Cette méthode reste inchangée.
      */
     public String generateConversationId(String user1, String user2) {
-        // Tri des emails pour garantir un ID constant quel que soit l’ordre.
+        // Tri des emails pour garantir un ID constant quel que soit l'ordre.
         if (user1.compareTo(user2) > 0) {
             String temp = user1;
             user1 = user2;

@@ -15,13 +15,13 @@ public class Message {
     private long timestamp;
     private boolean delivered;
     private boolean read;
-    private String type; // "private" or "broadcast"
+    private String type; // "private", "group", or "broadcast"
+    private Status status;
+    private String groupName; // Only used for group messages
 
     public enum Status {
         SENT, DELIVERED, READ
     }
-
-    private Status status;
     
     public Message(String sender, String content, String type) {
         this.id = generateId();
@@ -78,25 +78,28 @@ public class Message {
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
     
+    public String getGroupName() { return groupName; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
     
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
-        json.put("id", id);
-        json.put("conversationId", conversationId);
-        json.put("sender", sender);
-        json.put("content", content);
-        json.put("timestamp", timestamp);
-        json.put("delivered", delivered);
-        json.put("read", read);
-        json.put("type", type);
-        
-        // Handle possible null status
-        if (status != null) {
+        try {
+            json.put("id", id);
+            json.put("conversationId", conversationId);
+            json.put("sender", sender);
+            json.put("content", content);
+            json.put("timestamp", timestamp);
+            json.put("delivered", delivered);
+            json.put("read", read);
+            json.put("type", type);
             json.put("status", status.name());
-        } else {
-            json.put("status", Status.SENT.name()); // Default to SENT if null
+            if (groupName != null) {
+                json.put("groupName", groupName);
+                json.put("isGroup", true);
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
         }
-        
         return json;
     }
     
@@ -131,8 +134,10 @@ public class Message {
                     message.setStatus(Status.SENT);
                 }
             }
+            if (json.has("groupName")) {
+                message.setGroupName(json.getString("groupName"));
+            }
             
-            // MISSING RETURN STATEMENT: Add this line
             return message;
             
         } catch (JSONException e) {

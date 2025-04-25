@@ -108,19 +108,21 @@ public void run() {
                         case "GET_HISTORY":
                             handleHistoryRequest(messageJson);
                             break;
-
+                        case "GET_GROUP_HISTORY":
+                            handleGroupHistoryRequest(messageJson);
+                            break;
+                        case "DELETE_GROUP":
+                            handleDeleteGroup(messageJson);
+                            break;
                         case "private":
                             handlePrivateMessage(messageJson);
                             break;
-
                         case "broadcast":
                             handleBroadcastMessage(messageJson);
                             break;
-
                         case "read_receipt":
                             handleReadReceipt(messageJson);
                             break;
-
                         case "create_group":
                             handleCreateGroup(messageJson);
                             break;
@@ -184,26 +186,57 @@ public void run() {
             return;
         }
         
+        // Vérifier si l'expéditeur est membre du groupe
         List<String> members = group.getMembersEmails();
+        if (!members.contains(userEmail)) {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "You are not a member of group '" + groupName + "'");
+            sendMessage(error.toString());
+            return;
+        }
+        
         System.out.println("Handling group message to " + groupName + " with " + members.size() + " members");
         
         String messageId = "msg_" + System.currentTimeMillis() + "_" + Integer.toHexString((int) (Math.random() * 10000));
 
         JSONObject routingMessage = new JSONObject();
         routingMessage.put("id", messageId);
-        routingMessage.put("type", "group");
+        routingMessage.put("type", "private");
+        routingMessage.put("isGroup", true);
         routingMessage.put("sender", userEmail);
         routingMessage.put("content", content);
         routingMessage.put("groupName", groupName);
+        routingMessage.put("timestamp", System.currentTimeMillis());
 
+        // Store message in database first
+        messageService.storeGroupMessage(groupName, userEmail, content, messageId);
+
+        // Send to all members except sender
+        boolean atLeastOneOnline = false;
         for (String member : members) {
-            ClientHandler memberHandler = findClientByEmail(member);
-            if (memberHandler != null) {
-                memberHandler.sendMessage(routingMessage.toString());
-            } else {
-                messageService.storeOfflineMessage(member, routingMessage);
+            if (!member.equals(userEmail)) {
+                ClientHandler memberHandler = findClientByEmail(member);
+                if (memberHandler != null && memberHandler.isConnected()) {
+                    memberHandler.sendMessage(routingMessage.toString());
+                    atLeastOneOnline = true;
+                } else {
+                    // Store as offline message
+                    messageService.storeOfflineMessage(member, routingMessage);
+                }
             }
         }
+
+        // Send delivery receipt
+        JSONObject receipt = new JSONObject();
+        receipt.put("type", "delivery_receipt");
+        receipt.put("messageId", messageId);
+        receipt.put("status", atLeastOneOnline ? "delivered" : "pending");
+        sendMessage(receipt.toString());
+    }
+
+    private boolean isConnected() {
+        return !clientSocket.isClosed() && clientSocket.isConnected();
     }
 
     private void handleBroadcastMessage(JSONObject messageJson) throws JSONException {
@@ -292,6 +325,71 @@ public void run() {
 
         response.put("messages", messagesArray);
         sendMessage(response.toString());
+    }
+
+    private void handleGroupHistoryRequest(JSONObject request) throws JSONException {
+        String groupName = request.getString("groupName");
+        Group group = groupService.findGroupByName(groupName);
+        
+        if (group == null || !group.getMembersEmails().contains(userEmail)) {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "You are not a member of group: " + groupName);
+            sendMessage(error.toString());
+            return;
+        }
+
+        List<JSONObject> history = messageService.getGroupMessageHistory(groupName);
+        
+        JSONObject response = new JSONObject();
+        response.put("type", "HISTORY_RESPONSE");
+        response.put("messages", new JSONArray(history));
+        sendMessage(response.toString());
+    }
+
+    private void handleDeleteGroup(JSONObject request) throws JSONException {
+        String groupName = request.getString("groupName");
+        Group group = groupService.findGroupByName(groupName);
+        
+        if (group == null) {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "Group not found: " + groupName);
+            sendMessage(error.toString());
+            return;
+        }
+        
+        // Vérifier si l'utilisateur est membre du groupe
+        if (!group.getMembersEmails().contains(userEmail)) {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "You are not a member of this group");
+            sendMessage(error.toString());
+            return;
+        }
+        
+        // Supprimer les messages du groupe
+        messageService.deleteGroupMessages(groupName);
+        
+        // Supprimer le groupe
+        if (groupService.deleteGroup(groupName)) {
+            // Notifier tous les membres du groupe
+            JSONObject notification = new JSONObject();
+            notification.put("type", "group_deleted");
+            notification.put("groupName", groupName);
+            
+            for (String member : group.getMembersEmails()) {
+                ClientHandler memberHandler = findClientByEmail(member);
+                if (memberHandler != null) {
+                    memberHandler.sendMessage(notification.toString());
+                }
+            }
+        } else {
+            JSONObject error = new JSONObject();
+            error.put("type", "error");
+            error.put("content", "Failed to delete group: " + groupName);
+            sendMessage(error.toString());
+        }
     }
 
     private void sendOfflineMessages() {

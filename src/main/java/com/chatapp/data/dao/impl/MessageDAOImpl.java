@@ -47,10 +47,7 @@ public class MessageDAOImpl implements MessageDAO {
     }
 
     @Override
-    public List<JSONObject> getConversationHistory(String user1, String user2) {
-        // Generate conversation ID using the same algorithm as in ConversationService
-        String conversationId = generateConversationId(user1, user2);
-        
+    public List<JSONObject> getConversationHistory(String conversationId) {
         String query = "SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC";
         List<JSONObject> messages = new ArrayList<>();
         
@@ -78,6 +75,42 @@ public class MessageDAOImpl implements MessageDAO {
             return messages;
         } catch (SQLException | JSONException e) {
             System.err.println("Database error retrieving conversation history: " + e.getMessage());
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    @Override
+    public List<JSONObject> getGroupMessages(int groupId) {
+        String query = "SELECT m.* FROM messages m " +
+                      "JOIN group_conversations gc ON m.conversation_id = gc.conversation_id " +
+                      "WHERE gc.group_id = ? ORDER BY m.timestamp ASC";
+        List<JSONObject> messages = new ArrayList<>();
+        
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(query)) {
+            
+            stmt.setInt(1, groupId);
+            ResultSet rs = stmt.executeQuery();
+            
+            while (rs.next()) {
+                JSONObject message = new JSONObject();
+                message.put("id", rs.getString("id"));
+                message.put("sender", rs.getString("sender_email"));
+                message.put("conversationId", rs.getString("conversation_id"));
+                message.put("content", rs.getString("content"));
+                message.put("type", rs.getString("type"));
+                message.put("status", rs.getString("status"));
+                message.put("timestamp", rs.getLong("timestamp"));
+                message.put("delivered", rs.getBoolean("delivered"));
+                message.put("read", rs.getBoolean("read_status"));
+                
+                messages.add(message);
+            }
+            
+            return messages;
+        } catch (SQLException | JSONException e) {
+            System.err.println("Database error retrieving group messages: " + e.getMessage());
             e.printStackTrace();
             return new ArrayList<>();
         }

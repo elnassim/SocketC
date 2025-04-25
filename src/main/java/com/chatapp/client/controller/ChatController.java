@@ -2,6 +2,7 @@ package com.chatapp.client.controller;
 
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -236,11 +237,14 @@ public class ChatController {
     
     private void requestConversationHistory(String contactEmail) {
         try {
-            System.out.println("Requesting history for: " + contactEmail);
+            // 1. Création de la requête
             JSONObject request = new JSONObject();
             request.put("type", "GET_HISTORY");
             request.put("otherUser", contactEmail);
+            
+            // 2. Envoi au serveur
             out.println(request.toString());
+            System.out.println("Requesting history for: " + contactEmail);
         } catch (JSONException e) {
             addSystemMessage("Error requesting chat history: " + e.getMessage());
         }
@@ -340,6 +344,9 @@ public class ChatController {
         VBox conversationView = new VBox();
         conversationView.setSpacing(5);
     
+        // Si c'est un groupe, ajouter un bouton de suppression
+        
+    
         ScrollPane scrollPane = new ScrollPane();
         VBox messagesBox = new VBox(5);
         messagesBox.setPadding(new Insets(10));
@@ -365,22 +372,21 @@ public class ChatController {
         sendButton.getStyleClass().add("primary-button");
         
         // Event handler for sending message
-        sendButton.setOnAction(event -> {
+        EventHandler<ActionEvent> sendHandler = e -> {
             String msg = messageField.getText().trim();
             if (!msg.isEmpty()) {
-                sendPrivateMessage(key, msg);
+                if (key.contains("@")) {
+                    sendPrivateMessage(key, msg);
+                } else {
+                    sendGroupMessage(key, msg);
+                }
                 messageField.clear();
                 messageField.requestFocus();
             }
-        });
-        messageField.setOnAction(event -> {
-            String msg = messageField.getText().trim();
-            if (!msg.isEmpty()) {
-                sendPrivateMessage(key, msg);
-                messageField.clear();
-                messageField.requestFocus();
-            }
-        });
+        };
+        
+        sendButton.setOnAction(sendHandler);
+        messageField.setOnAction(sendHandler);
 
         inputArea.getChildren().addAll(messageField, sendButton);
         conversationView.getChildren().addAll(scrollPane, inputArea);
@@ -397,6 +403,26 @@ public class ChatController {
 
         loadConversationHistory(key, messagesBox);
         return newTab;
+    }
+
+    private void sendGroupMessage(String groupName, String content) {
+        try {
+            JSONObject groupMsg = new JSONObject();
+            groupMsg.put("type", "private");
+            groupMsg.put("to", groupName);
+            groupMsg.put("content", content);
+            groupMsg.put("sender", userEmail);
+            groupMsg.put("isGroup", true);
+            out.println(groupMsg.toString());
+            
+            // Add outgoing message to UI
+            VBox container = contactMessageContainers.get(groupName);
+            if (container != null) {
+                addOutgoingMessageToContainer(container, content);
+            }
+        } catch (JSONException e) {
+            addSystemMessage("Error sending group message: " + e.getMessage());
+        }
     }
 
     private void loadConversationHistory(String contactEmail, VBox container) {
@@ -521,6 +547,7 @@ public class ChatController {
         try {
             JSONObject msgJson = new JSONObject(message);
             String type = msgJson.getString("type");
+            
             if ("groups_list".equals(type)) {
                 handleGroupsListResponse(msgJson);
                 return;
@@ -529,18 +556,27 @@ public class ChatController {
                 handleDeliveryReceipt(msgJson);
                 return;
             }
-            
             if ("read_receipt".equals(type)) {
                 handleReadReceipt(msgJson);
                 return;
             }
+            
             if ("private".equals(type)) {
                 String content = msgJson.getString("content");
+                String sender = msgJson.optString("sender", "Server");
+                
+                // Check if this is a group message
                 if (msgJson.optBoolean("isGroup", false)) {
                     String groupName = msgJson.getString("groupName");
-                    handleGroupMessage(groupName, msgJson.optString("sender", "Server"), content);
+                    System.out.println("Received group message from " + sender + " in group " + groupName);
+                    handleGroupMessage(groupName, sender, content);
+                    
+                    // Send read receipt for group message
+                    if (msgJson.has("id")) {
+                        sendReadReceipt(msgJson.getString("id"), sender);
+                    }
                 } else {
-                    String sender = msgJson.optString("sender", "Server");
+                    // Handle regular private message
                     sendReadReceipt(msgJson.getString("id"), sender);
                     handlePrivateMessage(sender, content);
                 }
@@ -554,21 +590,46 @@ public class ChatController {
             } else if ("HISTORY_RESPONSE".equals(type)) {
                 handleHistoryResponse(msgJson);
             } else if ("group_created".equals(type)) {
+                handleGroupCreated(msgJson);
+            } else if ("error".equals(type)) {
+                String content = msgJson.getString("content");
+                addSystemMessage("Error: " + content);
+            } else if ("group_deleted".equals(type)) {
                 String groupName = msgJson.getString("groupName");
-                System.out.println("Received group_created notification for group: " + groupName);
-                
                 Platform.runLater(() -> {
-                    if (!contacts.contains(groupName)) {
-                        contacts.add(groupName);
-                        saveContacts();
-                        refreshContactsList();
-                        addSystemMessage("You have been added to group: " + groupName);
+                    contacts.remove(groupName);
+                    Tab groupTab = contactTabs.remove(groupName);
+                    if (groupTab != null) {
+                        conversationTabPane.getTabs().remove(groupTab);
                     }
+                    contactMessageContainers.remove(groupName);
+                    refreshContactsList();
+                    addSystemMessage("Group '" + groupName + "' has been deleted");
                 });
             }
         } catch (JSONException e) {
             addSystemMessage("Invalid message format: " + message);
         }
+    }
+
+    private void handleGroupCreated(JSONObject msgJson) throws JSONException {
+        String groupName = msgJson.getString("groupName");
+        System.out.println("Received group_created notification for group: " + groupName);
+        
+        Platform.runLater(() -> {
+            if (!contacts.contains(groupName)) {
+                contacts.add(groupName);
+                saveContacts();
+                refreshContactsList();
+                addSystemMessage("You have been added to group: " + groupName);
+                
+                // Create tab for new group
+                if (!contactTabs.containsKey(groupName)) {
+                    Tab tab = createContactTab(groupName);
+                    conversationTabPane.getTabs().add(tab);
+                }
+            }
+        });
     }
 
     private void handleGroupsListResponse(JSONObject response) {
@@ -625,61 +686,46 @@ public class ChatController {
                 });
                 return;
             }
-    
+
             Map<String, List<JSONObject>> conversationMessages = new HashMap<>();
             
             for (int i = 0; i < messagesArray.length(); i++) {
                 JSONObject messageJson = messagesArray.getJSONObject(i);
                 
-                if (!messageJson.has("sender") || !messageJson.has("content") || 
-                    !messageJson.has("type") || !messageJson.has("conversationId")) {
+                if (!messageJson.has("sender") || !messageJson.has("content")) {
                     continue;
                 }
                 
                 String sender = messageJson.getString("sender");
-                String conversationId = messageJson.getString("conversationId");
-                String partner;
-                if (sender.equals(userEmail)) {
-                    if (conversationId.startsWith(userEmail + "_")) {
-                        partner = conversationId.substring((userEmail + "_").length());
-                    } else if (conversationId.endsWith("_" + userEmail)) {
-                        partner = conversationId.substring(0, conversationId.length() - (userEmail.length() + 1));
-                    } else if (conversationId.equals("broadcast")) {
-                        partner = "All";
-                    } else {
-                        String[] parts = conversationId.split("_");
-                        partner = parts[0].equals(userEmail) ? parts[1] : parts[0];
-                    }
+                String content = messageJson.getString("content");
+                boolean isGroup = messageJson.optBoolean("isGroup", false);
+                String conversationKey;
+                
+                if (isGroup) {
+                    conversationKey = messageJson.getString("groupName");
                 } else {
-                    partner = sender;
+                    String conversationId = messageJson.optString("conversationId", "");
+                    if (sender.equals(userEmail)) {
+                        conversationKey = conversationId.replace(userEmail + "_", "").replace("_" + userEmail, "");
+                    } else {
+                        conversationKey = sender;
+                    }
                 }
                 
-                conversationMessages.computeIfAbsent(partner, k -> new ArrayList<>()).add(messageJson);
+                conversationMessages.computeIfAbsent(conversationKey, k -> new ArrayList<>()).add(messageJson);
             }
             
             for (Map.Entry<String, List<JSONObject>> entry : conversationMessages.entrySet()) {
-                String partner = entry.getKey();
+                String conversationKey = entry.getKey();
                 List<JSONObject> messages = entry.getValue();
-                final String contactKey = partner;
                 
                 Platform.runLater(() -> {
-                    VBox container;
-                    if (!contactMessageContainers.containsKey(contactKey)) {
-                        Tab newTab = createContactTab(contactKey);
-                        container = contactMessageContainers.get(contactKey);
-                        if (!contacts.contains(contactKey) && !contactKey.equals("All")) {
-                            contacts.add(contactKey);
-                            saveContacts();
-                            refreshContactsList();
-                        }
-                    } else {
-                        container = contactMessageContainers.get(contactKey);
-                        container.getChildren().removeIf(node -> 
-                            node instanceof Label &&
-                            ((Label)node).getText().equals("Loading conversation history..."));
-                    }
-                    
+                    VBox container = getOrCreateMessageContainer(conversationKey);
                     if (container != null) {
+                        container.getChildren().removeIf(node -> 
+                            node instanceof Label && 
+                            ((Label)node).getText().equals("Loading conversation history..."));
+                        
                         for (JSONObject messageJson : messages) {
                             try {
                                 String sender = messageJson.getString("sender");
@@ -699,9 +745,21 @@ public class ChatController {
             
         } catch (JSONException e) {
             System.err.println("Error processing history: " + e.getMessage());
-            e.printStackTrace();
             Platform.runLater(() -> addSystemMessage("Error processing chat history"));
         }
+    }
+
+    private VBox getOrCreateMessageContainer(String key) {
+        if (!contactMessageContainers.containsKey(key)) {
+            Tab newTab = createContactTab(key);
+            if (!contacts.contains(key)) {
+                contacts.add(key);
+                saveContacts();
+                refreshContactsList();
+            }
+            conversationTabPane.getTabs().add(newTab);
+        }
+        return contactMessageContainers.get(key);
     }
 
     private void handleDeliveryReceipt(JSONObject receipt) {
@@ -985,5 +1043,24 @@ public class ChatController {
     /* ---------- Deprecated/Unsupported Methods ---------- */
     private void launchChatUI(String email, Socket socket, BufferedReader in, PrintWriter out) throws IOException {
         throw new UnsupportedOperationException("This method should not be called from ChatController");
+    }
+
+    private void handleDeleteGroup(String groupName) {
+        Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION);
+        confirmation.setTitle("Delete Group");
+        confirmation.setHeaderText("Delete group: " + groupName);
+        confirmation.setContentText("Are you sure you want to delete this group? This action cannot be undone.");
+
+        Optional<ButtonType> result = confirmation.showAndWait();
+        if (result.isPresent() && result.get() == ButtonType.OK) {
+            try {
+                JSONObject request = new JSONObject();
+                request.put("type", "DELETE_GROUP");
+                request.put("groupName", groupName);
+                out.println(request.toString());
+            } catch (JSONException e) {
+                addSystemMessage("Error sending delete group request: " + e.getMessage());
+            }
+        }
     }
 }
