@@ -1,39 +1,45 @@
 package com.chatapp.data.dao.impl;
 
-import com.chatapp.common.model.User;
-import com.chatapp.data.dao.UserDAO;
-import com.chatapp.data.db.DatabaseManager;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.chatapp.common.model.User;
+import com.chatapp.data.dao.UserDAO;
+import com.chatapp.data.db.DatabaseManager;
+
 public class UserDAOImpl implements UserDAO {
 
+    private static final String INSERT_USER = "INSERT INTO users (username, password, email) VALUES (?, ?, ?)";
+    private static final String FIND_BY_EMAIL = "SELECT * FROM users WHERE email = ?";
+    private static final String UPDATE_USER = "UPDATE users SET username = ?, password = ? WHERE email = ?";
+    private static final String CHECK_EMAIL_EXISTS = "SELECT COUNT(*) FROM users WHERE email = ?";
+
     @Override
-    public User findByEmail(String email) {
-        String query = "SELECT * FROM users WHERE email = ?";
-
+    public User findByEmail(String email) throws SQLException {
         try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-
+             PreparedStatement stmt = conn.prepareStatement(FIND_BY_EMAIL)) {
+            
             stmt.setString(1, email);
             ResultSet rs = stmt.executeQuery();
-
+            
             if (rs.next()) {
-                String username = rs.getString("username");
-                String password = rs.getString("password");
-                return new User(username, password, email);
+                User user = new User();
+                user.setUsername(rs.getString("username"));
+                user.setPassword(rs.getString("password"));
+                user.setEmail(rs.getString("email"));
+                return user;
             }
-            return null;
+            
         } catch (SQLException e) {
-            System.err.println("Database error finding user: " + e.getMessage());
-            e.printStackTrace();
-            return null;
+            System.err.println("Error finding user by email: " + e.getMessage());
+            throw e;
         }
+        return null;
     }
 
     @Override
@@ -58,20 +64,24 @@ public class UserDAOImpl implements UserDAO {
     }
 
     @Override
-    public boolean create(User user) {
-        String query = "INSERT INTO users (email, username, password) VALUES (?, ?, ?)";
-
+    public boolean create(User user) throws SQLException {
+        if (emailExists(user.getEmail())) {
+            System.err.println("Email already exists: " + user.getEmail());
+            return false;
+        }
+        
         try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-
-            stmt.setString(1, user.getEmail());
-            stmt.setString(2, user.getUsername());
-            stmt.setString(3, user.getPassword());
-
+             PreparedStatement stmt = conn.prepareStatement(INSERT_USER)) {
+            
+            stmt.setString(1, user.getUsername());
+            stmt.setString(2, user.getPassword());
+            stmt.setString(3, user.getEmail());
+            
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;
-        } catch (SQLException e) {
-            System.err.println("Database error creating user: " + e.getMessage());
+            
+        } catch (SQLIntegrityConstraintViolationException e) {
+            System.err.println("Duplicate entry error: " + e.getMessage());
             return false;
         }
     }
@@ -101,26 +111,28 @@ public class UserDAOImpl implements UserDAO {
 
     @Override
     public boolean update(User user) {
-        // First check if user exists
-        if (findByEmail(user.getEmail()) == null) {
-            System.err.println("Cannot update non-existent user: " + user.getEmail());
-            return false;
-        }
-
-        String query = "UPDATE users SET username = ?, password = ? WHERE email = ?";
-
-        try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-
-            stmt.setString(1, user.getUsername());
-            stmt.setString(2, user.getPassword());
-            stmt.setString(3, user.getEmail());
-
-            int rowsAffected = stmt.executeUpdate();
-            if (rowsAffected > 0) {
-                System.out.println("User updated successfully: " + user.getEmail());
+        try {
+            // First check if user exists
+            if (findByEmail(user.getEmail()) == null) {
+                System.err.println("Cannot update non-existent user: " + user.getEmail());
+                return false;
             }
-            return rowsAffected > 0;
+
+            String query = "UPDATE users SET username = ?, password = ? WHERE email = ?";
+
+            try (Connection conn = DatabaseManager.getConnection();
+                 PreparedStatement stmt = conn.prepareStatement(query)) {
+
+                stmt.setString(1, user.getUsername());
+                stmt.setString(2, user.getPassword());
+                stmt.setString(3, user.getEmail());
+
+                int rowsAffected = stmt.executeUpdate();
+                if (rowsAffected > 0) {
+                    System.out.println("User updated successfully: " + user.getEmail());
+                }
+                return rowsAffected > 0;
+            }
         } catch (SQLException e) {
             System.err.println("Database error updating user: " + e.getMessage());
             e.printStackTrace();
@@ -130,121 +142,127 @@ public class UserDAOImpl implements UserDAO {
 
     @Override
     public boolean delete(String email) {
-        // First check if user exists
-        if (findByEmail(email) == null) {
-            System.err.println("Cannot delete non-existent user: " + email);
-            return false;
-        }
-
-        // Start transaction to manage cascade deletion
-        Connection conn = null;
         try {
-            conn = DatabaseManager.getConnection();
-            conn.setAutoCommit(false);
-
-            // First delete from contacts table (both directions)
-            String contactsQuery = "DELETE FROM contacts WHERE user_email = ? OR contact_email = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(contactsQuery)) {
-                stmt.setString(1, email);
-                stmt.setString(2, email);
-                stmt.executeUpdate();
+            // First check if user exists
+            if (findByEmail(email) == null) {
+                System.err.println("Cannot delete non-existent user: " + email);
+                return false;
             }
 
-            // Delete from conversation_participants
-            String partQuery = "DELETE FROM conversation_participants WHERE user_email = ?";
-            try (PreparedStatement stmt = conn.prepareStatement(partQuery)) {
-                stmt.setString(1, email);
-                stmt.executeUpdate();
-            }
+            // Start transaction to manage cascade deletion
+            Connection conn = null;
+            try {
+                conn = DatabaseManager.getConnection();
+                conn.setAutoCommit(false);
 
-            // Find messages sent by user
-            String findMsgQuery = "SELECT id FROM messages WHERE sender_email = ?";
-            List<String> messageIds = new ArrayList<>();
-            try (PreparedStatement stmt = conn.prepareStatement(findMsgQuery)) {
-                stmt.setString(1, email);
-                ResultSet rs = stmt.executeQuery();
-                while (rs.next()) {
-                    messageIds.add(rs.getString("id"));
+                // First delete from contacts table (both directions)
+                String contactsQuery = "DELETE FROM contacts WHERE user_email = ? OR contact_email = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(contactsQuery)) {
+                    stmt.setString(1, email);
+                    stmt.setString(2, email);
+                    stmt.executeUpdate();
                 }
-            }
 
-            // Delete messages sent by user
-            if (!messageIds.isEmpty()) {
-                String deleteQuery = "DELETE FROM messages WHERE sender_email = ?";
-                try (PreparedStatement stmt = conn.prepareStatement(deleteQuery)) {
+                // Delete from conversation_participants
+                String partQuery = "DELETE FROM conversation_participants WHERE user_email = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(partQuery)) {
                     stmt.setString(1, email);
                     stmt.executeUpdate();
                 }
-            }
 
-            // Finally delete the user
-            String userQuery = "DELETE FROM users WHERE email = ?";
-            int rowsAffected;
-            try (PreparedStatement stmt = conn.prepareStatement(userQuery)) {
-                stmt.setString(1, email);
-                rowsAffected = stmt.executeUpdate();
-            }
+                // Find messages sent by user
+                String findMsgQuery = "SELECT id FROM messages WHERE sender_email = ?";
+                List<String> messageIds = new ArrayList<>();
+                try (PreparedStatement stmt = conn.prepareStatement(findMsgQuery)) {
+                    stmt.setString(1, email);
+                    ResultSet rs = stmt.executeQuery();
+                    while (rs.next()) {
+                        messageIds.add(rs.getString("id"));
+                    }
+                }
 
-            // Commit all changes
-            conn.commit();
+                // Delete messages sent by user
+                if (!messageIds.isEmpty()) {
+                    String deleteQuery = "DELETE FROM messages WHERE sender_email = ?";
+                    try (PreparedStatement stmt = conn.prepareStatement(deleteQuery)) {
+                        stmt.setString(1, email);
+                        stmt.executeUpdate();
+                    }
+                }
 
-            if (rowsAffected > 0) {
-                System.out.println("User deleted successfully: " + email);
-            }
-            return rowsAffected > 0;
+                // Finally delete the user
+                String userQuery = "DELETE FROM users WHERE email = ?";
+                int rowsAffected;
+                try (PreparedStatement stmt = conn.prepareStatement(userQuery)) {
+                    stmt.setString(1, email);
+                    rowsAffected = stmt.executeUpdate();
+                }
 
-        } catch (SQLException e) {
-            // Rollback transaction on error
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    System.err.println("Error during transaction rollback: " + ex.getMessage());
+                // Commit all changes
+                conn.commit();
+
+                if (rowsAffected > 0) {
+                    System.out.println("User deleted successfully: " + email);
+                }
+                return rowsAffected > 0;
+
+            } catch (SQLException e) {
+                // Rollback transaction on error
+                if (conn != null) {
+                    try {
+                        conn.rollback();
+                    } catch (SQLException ex) {
+                        System.err.println("Error during transaction rollback: " + ex.getMessage());
+                    }
+                }
+                System.err.println("Database error deleting user: " + e.getMessage());
+                e.printStackTrace();
+                return false;
+            } finally {
+                if (conn != null) {
+                    try {
+                        conn.setAutoCommit(true);
+                        conn.close();
+                    } catch (SQLException e) {
+                        System.err.println("Error resetting connection state: " + e.getMessage());
+                    }
                 }
             }
+        } catch (SQLException e) {
             System.err.println("Database error deleting user: " + e.getMessage());
             e.printStackTrace();
             return false;
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException e) {
-                    System.err.println("Error resetting connection state: " + e.getMessage());
-                }
-            }
         }
     }
 
-    // --- Méthode ajoutée pour mettre à jour le profil (username, password, profile_image) ---
     @Override
-    public boolean updateUserProfile(User user) {
-        // First check if user exists
-        if (findByEmail(user.getEmail()) == null) {
-            System.err.println("Cannot update profile of non-existent user: " + user.getEmail());
-            return false;
-        }
-
-        String query = "UPDATE users SET username = ?, password = ?, ProfilePhoto = ? WHERE email = ?";
-
+    public boolean updateUserProfile(User user) throws SQLException {
         try (Connection conn = DatabaseManager.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-
+             PreparedStatement stmt = conn.prepareStatement(UPDATE_USER)) {
+            
             stmt.setString(1, user.getUsername());
             stmt.setString(2, user.getPassword());
-            stmt.setString(3, user.getProfilePhoto());
-            stmt.setString(4, user.getEmail());
-
+            stmt.setString(3, user.getEmail());
+            
             int rowsAffected = stmt.executeUpdate();
-            if (rowsAffected > 0) {
-                System.out.println("User profile updated successfully: " + user.getEmail());
-            }
             return rowsAffected > 0;
-        } catch (SQLException e) {
-            System.err.println("Error updating user profile: " + e.getMessage());
-            e.printStackTrace();
-            return false;
         }
+    }
+
+    private boolean emailExists(String email) throws SQLException {
+        try (Connection conn = DatabaseManager.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(CHECK_EMAIL_EXISTS)) {
+            
+            stmt.setString(1, email);
+            ResultSet rs = stmt.executeQuery();
+            
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+            
+        } catch (SQLException e) {
+            System.err.println("Error checking email existence: " + e.getMessage());
+        }
+        return false;
     }
 }

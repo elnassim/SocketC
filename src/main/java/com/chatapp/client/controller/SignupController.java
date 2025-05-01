@@ -1,17 +1,21 @@
 package com.chatapp.client.controller;
 
+import java.io.IOException;
+import java.util.regex.Pattern;
+
 import com.chatapp.client.network.ClientNetworkService;
-import javafx.application.Platform;
+
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.TextField;
 import javafx.stage.Stage;
-
-import java.io.IOException;
-import java.util.regex.Pattern;
 
 public class SignupController {
 
@@ -30,54 +34,61 @@ public class SignupController {
 
     @FXML
     private void handleRegister(ActionEvent event) {
+        // Clear previous error messages
+        messageLabel.setText("");
+        
+        // Get input values
         String username = usernameField.getText().trim();
-        String email    = emailField.getText().trim();
-        String pass1    = passwordField.getText();
-        String pass2    = confirmPasswordField.getText();
-
-        // --- Validation rapide côté client ---
-        if (username.isEmpty() || email.isEmpty() || pass1.isEmpty() || pass2.isEmpty()) {
+        String email = emailField.getText().trim();
+        String password = passwordField.getText();
+        String confirmPassword = confirmPasswordField.getText();
+        
+        // Validate input
+        if (username.isEmpty() || email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
             showError("All fields are required");
             return;
         }
-        if (!EMAIL_REGEX.matcher(email).matches()) {
-            showError("Invalid email format");
-            return;
-        }
-        if (pass1.length() < 6) {              // ▼ longueur minimale
-            showError("Password must be at least 6 characters");
-            return;
-        }
-        if (!pass1.equals(pass2)) {
+        
+        if (!password.equals(confirmPassword)) {
             showError("Passwords do not match");
             return;
         }
-        if (pass1.length() < 6) { showError("Password must be ≥ 6 characters"); return; }
-
-
-        // --- Appel réseau dans un thread séparé ---
-        messageLabel.setText("Registering…");
-        messageLabel.getStyleClass().setAll("success-message");
-
-        Thread t = new Thread(() -> {
-            try {
-                ClientNetworkService net = new ClientNetworkService();
-                boolean ok = net.register(username, email, pass1);   // <<< nouvelle méthode côté client
-
-                Platform.runLater(() -> {
-                    if (ok) {
-                        showSuccess("Account created! You can now log in.");
-                        clearFields();
-                    } else {
-                        showError("Registration failed – email already used?");
-                    }
-                });
-            } catch (Exception ex) {
-                Platform.runLater(() -> showError("Error: " + ex.getMessage()));
+        
+        // Email format validation
+        if (!email.matches("^[A-Za-z0-9+_.-]+@(.+)$")) {
+            showError("Invalid email format");
+            return;
+        }
+        
+        // Password strength validation
+        if (password.length() < 6) {
+            showError("Password must be at least 6 characters long");
+            return;
+        }
+        
+        try {
+            ClientNetworkService networkService = new ClientNetworkService();
+            boolean registered = networkService.register(username, email, password);
+            
+            if (registered) {
+                showInfo("Registration successful! Please log in.");
+                // Load login view
+                FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/chatapp/client/view/login-view.fxml"));
+                Parent loginView = loader.load();
+                Scene loginScene = new Scene(loginView);
+                Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
+                stage.setScene(loginScene);
+                stage.show();
             }
-        });
-        t.setDaemon(true);
-        t.start();
+        } catch (IOException e) {
+            // Show the specific error message from the server
+            showError(e.getMessage());
+            System.err.println("Registration failed: " + e.getMessage());
+        } catch (Exception e) {
+            showError("An unexpected error occurred. Please try again.");
+            System.err.println("Unexpected error during registration: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     @FXML
@@ -100,9 +111,9 @@ public class SignupController {
         messageLabel.getStyleClass().setAll("error-message");
     }
 
-    private void showSuccess(String msg) {
+    private void showInfo(String msg) {
         messageLabel.setText(msg);
-        messageLabel.getStyleClass().setAll("success-message");
+        messageLabel.getStyleClass().setAll("info-message");
     }
 
     private void clearFields() {

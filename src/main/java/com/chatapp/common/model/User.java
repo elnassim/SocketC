@@ -10,8 +10,16 @@ public class User {
     
     // Nouveaux attributs pour la gestion du profil (ici, non modifiables via l'interface de mise à jour)
     private String displayName;
-    private String profilePhoto;
     private String status;
+
+    // No-args constructor
+    public User() {
+        this.email = "";
+        this.username = "";
+        this.password = "";
+        this.displayName = "";
+        this.status = "";
+    }
 
     // Constructeur existant : initialisation des nouveaux champs avec des valeurs par défaut
     public User(String username, String password, String email) {
@@ -19,7 +27,6 @@ public class User {
         this.password = password;
         this.email = email;
         this.displayName = username; // Par défaut, le nom affiché est le username
-        this.profilePhoto = "";      // Par défaut, aucune photo
         this.status = "";            // Par défaut, aucun statut
     }
 
@@ -28,12 +35,11 @@ public class User {
     }
     
     // Constructeur complet (utilisé en interne, mais non persisté en DB)
-    public User(String username, String password, String email, String displayName, String profilePhoto, String status) {
+    public User(String username, String password, String email, String displayName, String status) {
         this.username = username;
         this.password = password;
         this.email = email;
         this.displayName = displayName;
-        this.profilePhoto = profilePhoto;
         this.status = status;
     }
 
@@ -63,12 +69,6 @@ public class User {
     }
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
-    }
-    public String getProfilePhoto() {
-        return profilePhoto;
-    }
-    public void setProfilePhoto(String profilePhoto) {
-        this.profilePhoto = profilePhoto;
     }
     public String getStatus() {
         return status;

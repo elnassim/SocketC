@@ -11,7 +11,7 @@
 
 <BorderPane stylesheets="@styles.css" xmlns="http://javafx.com/javafx/15.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.chatapp.ClientLoginController">
    <center>
-      <VBox alignment="CENTER" maxWidth="300.0" spacing="15.0" styleClass="form-container">
+      <VBox alignment="CENTER" styleClass="form-container">
          <children>
             <Label styleClass="header-label" text="Chat Client Login">
                <font>

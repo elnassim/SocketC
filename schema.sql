@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(255) NOT NULL UNIQUE,
     username VARCHAR(50) NOT NULL,
     password VARCHAR(255) NOT NULL,
+    profile_photo TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

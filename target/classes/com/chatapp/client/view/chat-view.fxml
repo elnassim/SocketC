@@ -15,7 +15,7 @@
 <BorderPane xmlns="http://javafx.com/javafx"
             xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.chatapp.client.controller.ChatController"
-            stylesheets="@../styles.css">
+            stylesheets="/com/chatapp/client/styles.css">
 
     <!-- Zone supérieure: ajout du bouton Profil -->
     <top>

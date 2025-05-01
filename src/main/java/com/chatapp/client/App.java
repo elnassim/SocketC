@@ -30,7 +30,7 @@ public class App extends Application {
             primaryStage.sizeToScene();      // adapte la taille au contenu FXML
             primaryStage.setMinWidth(420);   // limites de confort
             primaryStage.setMinHeight(480);
-            primaryStage.setResizable(true); // permet à l’utilisateur de l’agrandir
+            primaryStage.setResizable(true); // permet à l'utilisateur de l'agrandir
             primaryStage.show();
 
         } catch (Exception e) {

@@ -1,18 +1,27 @@
 package com.chatapp.client.network;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
-import java.net.ConnectException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.json.JSONArray;
-import org.json.JSONObject;
 import org.json.JSONException;
+import org.json.JSONObject;
+
+import com.chatapp.security.MessageEncryption;
 
 /**
  * Handles network communication between the client and server
@@ -30,11 +39,22 @@ public class ClientNetworkService {
     private static final int MAX_RETRY_ATTEMPTS = 5;
     private static final long RETRY_INTERVAL_MS = 5000; // 5 seconds
     private static ClientNetworkService instance;
+    private MessageEncryption encryption;
+    private Map<String, String> userPublicKeys; // Store other users' public keys
 
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
     
+
+    public ClientNetworkService() {
+        userPublicKeys = new ConcurrentHashMap<>();
+        try {
+            encryption = new MessageEncryption();
+        } catch (Exception e) {
+            System.err.println("Failed to initialize encryption: " + e.getMessage());
+        }
+    }
 
     /**
      * Connect to the server and authenticate
@@ -44,26 +64,62 @@ public class ClientNetworkService {
      * @return Socket connection if successful, null otherwise
      * @throws IOException If a connection error occurs
      */
-    public Socket connect(String email, String password) throws IOException {
+    public static ClientNetworkService connect(String email, String password) throws IOException {
+        ClientNetworkService client = getInstance();
+        boolean connected = client.connectToServer(email, password);
+        if (!connected) {
+            throw new IOException("Authentication failed");
+        }
+        return client;
+    }
+
+    private boolean connectToServer(String email, String password) throws IOException {
+        userEmail = email;
         try {
+            System.out.println("Attempting to connect to server at " + SERVER_HOST + ":" + SERVER_PORT);
             socket = new Socket(SERVER_HOST, SERVER_PORT);
             out = new PrintWriter(socket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-            userEmail = email;
-
-            // Send authentication request
-            JSONObject loginRequest = new JSONObject();
-            loginRequest.put("email", email);
-            loginRequest.put("password", password);
-            String loginJson = loginRequest.toString();
-            out.println(loginJson);
-
-            return socket;
-        } catch (ConnectException e) {
-            throw new IOException("Failed to connect to server. Is the server running?");
+            // Send authentication request with public key
+            JSONObject authRequest = new JSONObject();
+            authRequest.put("type", "auth");
+            authRequest.put("email", email);
+            authRequest.put("password", password);
+            authRequest.put("publicKey", encryption.getPublicKeyString());
+            
+            System.out.println("Sending authentication request...");
+            out.println(authRequest.toString());
+            
+            String response = in.readLine();
+            System.out.println("Received server response: " + response);
+            
+            if (response == null) {
+                throw new IOException("No response from server");
+            }
+            
+            JSONObject jsonResponse = new JSONObject(response);
+            
+            if (jsonResponse.getBoolean("success")) {
+                System.out.println("Authentication successful--");
+                // Initialize retry mechanism for failed messages
+                initRetryMechanism();
+                System.out.println("Authentication successful--2");
+                return true;
+            } else {
+                String errorMessage = jsonResponse.optString("message", "Authentication failed");
+                System.err.println("Authentication failed: " + errorMessage);
+                throw new IOException(errorMessage);
+            }
+        } catch (JSONException e) {
+            System.err.println("Invalid server response format: " + e.getMessage());
+            throw new IOException("Server returned invalid response: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("Connection error: " + e.getMessage());
+            throw new IOException("Failed to connect: " + e.getMessage());
         }
     }
+
     public static ClientNetworkService getInstance() {
         if (instance == null) {
             instance = new ClientNetworkService();
@@ -104,21 +160,60 @@ public class ClientNetworkService {
         }, RETRY_INTERVAL_MS, RETRY_INTERVAL_MS, TimeUnit.MILLISECONDS);
     }
     public boolean register(String username, String email, String password) throws IOException {
-        Socket socket = new Socket(SERVER_HOST, SERVER_PORT);   // même host/port que pour login
-        PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
-        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-    
-        // On envoie une requête JSON de type REGISTER
-        JSONObject req = new JSONObject();
-        req.put("type", "REGISTER");
-        req.put("username", username);
-        req.put("email", email);
-        req.put("password", password);
-        out.println(req.toString());
-    
-        String resp = in.readLine();
-        socket.close();
-        return "REGISTER_SUCCESS".equals(resp);
+        Socket regSocket = null;
+        try {
+            System.out.println("Attempting to register user: " + email);
+            regSocket = new Socket(SERVER_HOST, SERVER_PORT);
+            PrintWriter regOut = new PrintWriter(regSocket.getOutputStream(), true);
+            BufferedReader regIn = new BufferedReader(new InputStreamReader(regSocket.getInputStream()));
+
+            // Create registration request
+            JSONObject req = new JSONObject();
+            req.put("type", "REGISTER");  // Changed to uppercase to match server expectation
+            req.put("username", username);
+            req.put("email", email);
+            req.put("password", password);
+            
+            System.out.println("Sending registration request...");
+            regOut.println(req.toString());
+            
+            // Read and parse response
+            String response = regIn.readLine();
+            System.out.println("Received registration response: " + response);
+            
+            if (response == null) {
+                throw new IOException("No response received from server");
+            }
+            
+            JSONObject jsonResponse = new JSONObject(response);
+            boolean success = jsonResponse.getBoolean("success");
+            
+            if (!success) {
+                String errorMessage = jsonResponse.optString("message", "Registration failed");
+                System.err.println("Registration failed: " + errorMessage);
+                throw new IOException(errorMessage);
+            }
+            
+            return success;
+            
+        } catch (JSONException e) {
+            System.err.println("Invalid server response format: " + e.getMessage());
+            throw new IOException("Server returned invalid response: " + e.getMessage());
+        } catch (IOException e) {
+            System.err.println("Registration error: " + e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            System.err.println("Unexpected error during registration: " + e.getMessage());
+            throw new IOException("Registration failed: " + e.getMessage());
+        } finally {
+            if (regSocket != null && !regSocket.isClosed()) {
+                try {
+                    regSocket.close();
+                } catch (IOException e) {
+                    System.err.println("Error closing registration socket: " + e.getMessage());
+                }
+            }
+        }
     }
     
 
@@ -128,8 +223,23 @@ public class ClientNetworkService {
      * @param message The message to send
      */
     public void sendMessage(String message) {
-        if (out != null) {
-            out.println(message);
+        try {
+            JSONObject jsonMessage = new JSONObject(message);
+            if (jsonMessage.getString("type").equals("private")) {
+                String recipient = jsonMessage.getString("to");
+                String content = jsonMessage.getString("content");
+                
+                String recipientPublicKey = userPublicKeys.get(recipient);
+                if (recipientPublicKey != null) {
+                    encryption.setOtherPartyPublicKey(recipientPublicKey);
+                    String encryptedContent = encryption.encryptMessage(content);
+                    jsonMessage.put("content", encryptedContent);
+                    jsonMessage.put("encrypted", true);
+                }
+            }
+            out.println(jsonMessage.toString());
+        } catch (Exception e) {
+            System.err.println("Error sending encrypted message: " + e.getMessage());
         }
     }
     public boolean updateProfile(String displayName, String photoURL, String status) {
@@ -233,12 +343,30 @@ public class ClientNetworkService {
         }
     }
     
+    // Add method to store other user's public key
+    public void storeUserPublicKey(String userEmail, String publicKey) {
+        userPublicKeys.put(userEmail, publicKey);
+        try {
+            encryption.setOtherPartyPublicKey(publicKey);
+        } catch (Exception e) {
+            System.err.println("Failed to store public key for " + userEmail + ": " + e.getMessage());
+        }
+    }
+
+    // Add method to decrypt received message
+    public String decryptMessage(String encryptedContent) {
+        try {
+            return encryption.decryptMessage(encryptedContent);
+        } catch (Exception e) {
+            System.err.println("Failed to decrypt message: " + e.getMessage());
+            return "[Encrypted Message - Decryption Failed]";
+        }
+    }
+    
     /**
      * Main method for command line client usage
      */
     public static void main(String[] args) {
-        ClientNetworkService client = new ClientNetworkService();
-
         try (BufferedReader consoleInput = new BufferedReader(new InputStreamReader(System.in))) {
             System.out.println("Simple Chat Client");
 
@@ -249,25 +377,31 @@ public class ClientNetworkService {
             String password = consoleInput.readLine();
 
             // Connect to server
-            Socket socket = client.connect(email, password);
-            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            ClientNetworkService client = ClientNetworkService.connect(email, password);
 
             // Get authentication response
-            String authResponse = in.readLine();
+            String authResponse = client.getIn().readLine();
             System.out.println("Server response: " + authResponse);
 
             if ("AUTH_SUCCESS".equals(authResponse)) {
-                System.out.println("Authentication successful!");
-
-                // Rest of client logic...
-                // ...
+                System.out.println("Authentication successful!!!!");
             } else {
                 System.out.println("Authentication failed. Exiting...");
             }
         } catch (IOException e) {
             System.err.println("Error: " + e.getMessage());
-        } finally {
-            client.disconnect();
         }
+    }
+
+    public Socket getSocket() {
+        return socket;
+    }
+
+    public BufferedReader getIn() {
+        return in;
+    }
+
+    public PrintWriter getOut() {
+        return out;
     }
 }

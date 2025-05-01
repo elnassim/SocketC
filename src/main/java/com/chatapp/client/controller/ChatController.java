@@ -1,35 +1,53 @@
 package com.chatapp.client.controller;
 
-import javafx.application.Platform;
-import javafx.event.ActionEvent;
-import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.layout.*;
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.net.URL;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.*;
-import java.net.Socket;
-import java.net.URL;
-import java.nio.file.Files;
-import java.util.*;
-
-import com.chatapp.common.model.User;
+import com.chatapp.client.network.ClientNetworkService;
 import com.chatapp.data.dao.ContactDAO;
 import com.chatapp.data.dao.impl.ContactDAOImpl;
-import com.chatapp.client.network.ClientNetworkService;
+import com.chatapp.security.SerpentCipher;
 
-// Import du contrôleur de profil pour accéder à la méthode initData()
-import com.chatapp.client.controller.ProfileController;
+import javafx.application.Platform;
+import javafx.event.ActionEvent;
+import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Parent;
+import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
+import javafx.scene.control.ListView;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SelectionMode;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 
 /**
  * Main controller for the chat application with conversation tabs.
@@ -201,66 +219,121 @@ public class ChatController {
      * Initialise la session de chat et configure la connexion.
      */
     public void initChatSession(String email, Socket socket, BufferedReader in, PrintWriter out) {
-        this.userEmail = email;
-        this.socket = socket;
-        this.in = in;
-        this.out = out;
-        this.connected = true;
-        
-        // Initialize network service
-        this.networkService = new ClientNetworkService();
-        
         try {
-            // this.networkService.initRetryMechanism();
+            System.out.println("Initializing chat session for: " + email);
+            
+            if (email == null || socket == null || in == null || out == null) {
+                throw new IllegalArgumentException("All parameters must be non-null");
+            }
+            
+            this.userEmail = email;
+            this.socket = socket;
+            this.in = in;
+            this.out = out;
+            this.connected = true;
+            
+            // Initialize network service
+            System.out.println("Initializing network service...");
+            this.networkService = new ClientNetworkService();
+            
+            // Load contacts first (this has to work before loadGroups)
+            System.out.println("Loading contacts...");
+            loadContacts();
+            
+            // Add this explicit call to load groups after the socket is initialized
+            System.out.println("Loading groups for user: " + email);
+            loadGroups();
+            
+            // Refresh UI
+            System.out.println("Refreshing contacts list...");
+            Platform.runLater(() -> {
+                try {
+                    refreshContactsList();
+                    addSystemMessage("Connected as " + userEmail);
+                    
+                    // Start message listener after UI is ready
+                    System.out.println("Starting message listener...");
+                    startMessageListener();
+                    
+                    // Make sure the General tab is selected and visible
+                    if (conversationTabPane != null && !conversationTabPane.getTabs().isEmpty()) {
+                        conversationTabPane.getSelectionModel().select(0);
+                    } else {
+                        System.err.println("Warning: conversationTabPane is null or empty");
+                    }
+                    
+                } catch (Exception e) {
+                    System.err.println("Error during UI refresh: " + e.getMessage());
+                    e.printStackTrace();
+                    addSystemMessage("Error initializing chat: " + e.getMessage());
+                    throw new RuntimeException("Failed to initialize UI", e);
+                }
+            });
+            
+            System.out.println("Chat session initialization completed successfully");
+            
         } catch (Exception e) {
-           // addSystemMessage("Error initializing message retry system: " + e.getMessage());
+            System.err.println("Error initializing chat session: " + e.getMessage());
+            e.printStackTrace();
+            Platform.runLater(() -> addSystemMessage("Error initializing chat session: " + e.getMessage()));
+            throw new RuntimeException("Failed to initialize chat session", e);
         }
-
-        // Load message history from disk first
-        
-    
-        // Load contacts first (this has to work before loadGroups)
-        loadContacts();
-        
-        // Add this explicit call to load groups after the socket is initialized
-        System.out.println("Loading groups for user: " + email);
-        loadGroups();
-        
-        // Refresh UI
-        refreshContactsList();
-        addSystemMessage("Connected as " + userEmail);
-        startMessageListener();
     }
 
     private void startMessageListener() {
-        new Thread(() -> {
+        System.out.println("Creating message listener thread...");
+        
+        Thread listenerThread = new Thread(() -> {
             try {
                 // Load groups again after a short delay to ensure connection is ready
                 Thread.sleep(1000);
+                
+                System.out.println("Requesting initial groups list...");
                 Platform.runLater(() -> {
                     try {
-                        System.out.println("Requesting groups list after connection startup");
                         JSONObject request = new JSONObject();
                         request.put("type", "get_groups");
                         out.println(request.toString());
+                        out.flush(); // Make sure to flush the output
                     } catch (JSONException e) {
+                        System.err.println("Error requesting groups: " + e.getMessage());
                         e.printStackTrace();
                     }
                 });
                 
+                System.out.println("Starting message read loop...");
                 String line;
                 while (connected && (line = in.readLine()) != null) {
                     final String receivedMsg = line;
-                    Platform.runLater(() -> handleIncomingMessage(receivedMsg));
+                    System.out.println("Received message: " + receivedMsg);
+                    
+                    // Handle message in a try-catch block to prevent listener from dying
+                    try {
+                        Platform.runLater(() -> handleIncomingMessage(receivedMsg));
+                    } catch (Exception e) {
+                        System.err.println("Error handling message: " + receivedMsg);
+                        e.printStackTrace();
+                        Platform.runLater(() -> addSystemMessage("Error processing message: " + e.getMessage()));
+                    }
                 }
             } catch (InterruptedException e) {
+                System.err.println("Message listener interrupted: " + e.getMessage());
                 Thread.currentThread().interrupt();
             } catch (IOException e) {
                 if (connected) {
+                    System.err.println("Connection error in message listener: " + e.getMessage());
                     Platform.runLater(() -> addSystemMessage("Connection lost: " + e.getMessage()));
                 }
+            } catch (Exception e) {
+                System.err.println("Unexpected error in message listener: " + e.getMessage());
+                e.printStackTrace();
+                Platform.runLater(() -> addSystemMessage("Error in message listener: " + e.getMessage()));
             }
-        }).start();
+        });
+        
+        listenerThread.setDaemon(true);
+        listenerThread.start();
+        System.out.println("Message listener thread started");
     }
     
     private void requestConversationHistory(String contactEmail) {
@@ -495,9 +568,23 @@ private void sendFile(String recipient, File file) {
                                 // Handle text message
                                 String content = messageJson.getString("content");
                                 
+                                // Handle encrypted messages from history
+                                if (messageJson.optBoolean("encrypted", false)) {
+                                    try {
+                                        byte[] encryptedBytes = java.util.Base64.getDecoder().decode(content);
+                                        byte[] decryptedBytes = SerpentCipher.decrypt(encryptedBytes);
+                                        content = new String(decryptedBytes);
+                                    } catch (Exception e) {
+                                        System.err.println("Error decrypting message: " + e.getMessage());
+                                        content = "[Encrypted message - Decryption failed]";
+                                    }
+                                }
+                                
                                 if (sender.equals(userEmail)) {
+                                    // Outgoing message
                                     addOutgoingMessageToContainer(container, content);
                                 } else {
+                                    // Incoming message
                                     addIncomingMessageToContainer(container, sender, content);
                                 }
                             }
@@ -731,14 +818,17 @@ private void handleSendFileToContact(String contactEmail) {
             String messageId = "msg_" + System.currentTimeMillis() + "_" +
                     Integer.toHexString((int) (Math.random() * 10000));
 
+            // Encrypt the message content
+            byte[] encryptedContent = SerpentCipher.encrypt(content.getBytes());
+            
             JSONObject privateMsg = new JSONObject();
             privateMsg.put("type", "private");
             privateMsg.put("to", recipient);
-            privateMsg.put("content", content);
+            privateMsg.put("content", java.util.Base64.getEncoder().encodeToString(encryptedContent));
             privateMsg.put("sender", userEmail);
             privateMsg.put("id", messageId);
+            privateMsg.put("encrypted", true); // Add flag to indicate encrypted content
             
-            privateMsg = com.chatapp.common.util.MessageValidator.addChecksum(privateMsg);
             out.println(privateMsg.toString());
             
             storeMessage(recipient, userEmail, content, true, true);
@@ -747,8 +837,9 @@ private void handleSendFileToContact(String contactEmail) {
             if (container != null) {
                 addOutgoingMessageToContainer(container, content, messageId);
             }
-        } catch (JSONException e) {
+        } catch (Exception e) {
             addSystemMessage("Error sending message: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -867,142 +958,57 @@ private void loadConversationHistory(String contactEmail, VBox container) {
 
     private void handleIncomingMessage(String message) {
         try {
-            JSONObject msgJson = new JSONObject(message);
-            String type = msgJson.getString("type");
-            if ("groups_list".equals(type)) {
-                handleGroupsListResponse(msgJson);
+            if (message == null || message.trim().isEmpty()) {
+                System.err.println("Received empty message");
                 return;
-            }
-            if ("delivery_receipt".equals(type)) {
-                handleDeliveryReceipt(msgJson);
-                return;
-            }
-            
-            if ("read_receipt".equals(type)) {
-                handleReadReceipt(msgJson);
-                return;
-            }
-            if ("private".equals(type)) {
-                String content = msgJson.getString("content");
-                if (msgJson.optBoolean("isGroup", false)) {
-                    String groupName = msgJson.getString("groupName");
-                    String sender = msgJson.getString("sender");  // Ensure we get the sender
-                    
-                    System.out.println("Received group message in " + groupName + " from " + sender);
-                    handleGroupMessage(groupName, sender, content);
-                } else {
-                    String sender = msgJson.optString("sender", "Server");
-                    sendReadReceipt(msgJson.getString("id"), sender);
-                    handlePrivateMessage(sender, content);
-                }
-            } else if ("broadcast".equals(type)) {
-                String content = msgJson.getString("content");
-                String sender = msgJson.optString("sender", "Server");
-                handleBroadcastMessage(sender, content);
-            } else if ("system".equals(type)) {
-                String content = msgJson.getString("content");
-                addSystemMessage(content);
-            } else if ("HISTORY_RESPONSE".equals(type)) {
-                handleHistoryResponse(msgJson);}
-            else if ("GROUP_HISTORY_RESPONSE".equals(type)) {
-                    handleGroupHistoryResponse(msgJson);
-                }
-             else if ("group_created".equals(type)) {
-                String groupName = msgJson.getString("groupName");
-                System.out.println("Group created: " + groupName);
-                
-                Platform.runLater(() -> {
-                    if (!contacts.contains(groupName)) {
-                        contacts.add(groupName);
-                        saveContacts(); // If you're using local storage
-                        refreshContactsList();
-                        addSystemMessage("You've been added to group: " + groupName);
-                    }
-                });
-            }
-            else if ("groups_list".equals(type)) {
-                System.out.println("Received groups list from server");
-                JSONArray groupsArray = msgJson.getJSONArray("groups");
-                System.out.println("Found " + groupsArray.length() + " groups");
-                
-                Platform.runLater(() -> {
-                    for (int i = 0; i < groupsArray.length(); i++) {
-                        try {
-                            JSONObject groupJson = groupsArray.getJSONObject(i);
-                            String groupName = groupJson.getString("name");
-                            System.out.println("Adding group to contacts: " + groupName);
-                            
-                            if (!contacts.contains(groupName)) {
-                                contacts.add(groupName);
-                            }
-                        } catch (JSONException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                    
-                    saveContacts(); // If you're saving contacts locally
-                    refreshContactsList();
-                });
             }
 
-            else if ("file".equals(type)) {
-                String sender = msgJson.getString("sender");
-                String fileId = msgJson.getString("id");
-                String filename = msgJson.getString("filename");
-                String mimeType = msgJson.getString("mimeType");
-                long fileSize = msgJson.getLong("fileSize");
-                
-                // Format file size for display
-                String sizeDisplay = formatFileSize(fileSize);
-                
-                Platform.runLater(() -> {
-                    // Add to UI
-                    if (!sender.equals(userEmail)) {
-                        // This is an incoming file
-                        if (!contacts.contains(sender)) {
-                            contacts.add(sender);
-                            saveContacts();
-                            refreshContactsList();
-                        }
-                        
-                        // Create or get tab for this sender
-                        Tab tab = getOrCreateContactTab(sender);
-                        if (!conversationTabPane.getTabs().contains(tab)) {
-                            conversationTabPane.getTabs().add(tab);
-                        }
-                        
-                        // Add file message to conversation
-                        VBox container = contactMessageContainers.get(sender);
-                        if (container != null) {
-                            addFileMessageToContainer(container, sender, fileId, filename, mimeType, sizeDisplay, false);
-                            flashContactTab(sender);
-                            
-                            // Send read receipt if tab is selected
-                            if (conversationTabPane.getSelectionModel().getSelectedItem() == tab) {
-                                sendFileViewedReceipt(fileId, sender);
-                            }
-                        }
-                    }
-                });
-            }
-            else if ("file_data".equals(type)) {
-                String fileId = msgJson.getString("fileId");
-                String base64Data = msgJson.getString("data");
-                
-                // Save the file or display it
-                handleFileData(fileId, base64Data);
-            }
-            else if ("file_receipt".equals(type)) {
-                String fileId = msgJson.getString("fileId");
-                String status = msgJson.getString("status");
-                
-                // Update file status in UI
-                Platform.runLater(() -> {
-                    updateFileStatus(fileId, status);
-                });
+            JSONObject msgJson = new JSONObject(message);
+            String type = msgJson.getString("type");
+            System.out.println("Processing message of type: " + type);
+
+            switch (type) {
+                case "private":
+                    String sender = msgJson.getString("sender");
+                    String content = msgJson.getString("content");
+                    handlePrivateMessage(sender, content);
+                    break;
+                    
+                case "broadcast":
+                    sender = msgJson.getString("sender");
+                    content = msgJson.getString("content");
+                    handleBroadcastMessage(sender, content);
+                    break;
+                    
+                case "history":
+                    handleHistoryResponse(msgJson);
+                    break;
+                    
+                case "group_history":
+                    handleGroupHistoryResponse(msgJson);
+                    break;
+                    
+                case "group_created":
+                    handleGroupCreated(msgJson);
+                    break;
+                    
+                case "error":
+                    String errorMsg = msgJson.getString("message");
+                    Platform.runLater(() -> addSystemMessage("Error: " + errorMsg));
+                    break;
+                    
+                default:
+                    System.err.println("Unknown message type: " + type);
+                    break;
             }
         } catch (JSONException e) {
-            addSystemMessage("Invalid message format: " + message);
+            System.err.println("Error parsing message: " + message);
+            e.printStackTrace();
+            Platform.runLater(() -> addSystemMessage("Error processing message: " + e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("Unexpected error handling message: " + message);
+            e.printStackTrace();
+            Platform.runLater(() -> addSystemMessage("Error: " + e.getMessage()));
         }
     }
 
@@ -1101,6 +1107,19 @@ private void loadConversationHistory(String contactEmail, VBox container) {
                         } else {
                             // Handle text message
                             String content = finalMessageJson.getString("content");
+                            
+                            // Handle encrypted messages from history
+                            if (finalMessageJson.optBoolean("encrypted", false)) {
+                                try {
+                                    byte[] encryptedBytes = java.util.Base64.getDecoder().decode(content);
+                                    byte[] decryptedBytes = SerpentCipher.decrypt(encryptedBytes);
+                                    content = new String(decryptedBytes);
+                                } catch (Exception e) {
+                                    System.err.println("Error decrypting message: " + e.getMessage());
+                                    content = "[Encrypted message - Decryption failed]";
+                                }
+                            }
+                            
                             if (sender.equals(userEmail)) {
                                 // Outgoing message
                                 addOutgoingMessageToContainer(container, content);
@@ -1655,5 +1674,23 @@ private void sendGroupFile(String groupName, File file) {
     /* ---------- Deprecated/Unsupported Methods ---------- */
     private void launchChatUI(String email, Socket socket, BufferedReader in, PrintWriter out) throws IOException {
         throw new UnsupportedOperationException("This method should not be called from ChatController");
+    }
+
+    private void handleGroupCreated(JSONObject groupJson) {
+        try {
+            String groupName = groupJson.getString("groupName");
+            System.out.println("Group created: " + groupName);
+            
+            Platform.runLater(() -> {
+                if (!contacts.contains(groupName)) {
+                    contacts.add(groupName);
+                    saveContacts(); // Save to local storage
+                    refreshContactsList();
+                    addSystemMessage("You've been added to group: " + groupName);
+                }
+            });
+        } catch (JSONException e) {
+            System.err.println("Error handling group creation: " + e.getMessage());
+        }
     }
 }

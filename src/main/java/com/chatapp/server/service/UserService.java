@@ -1,5 +1,11 @@
 package com.chatapp.server.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.sql.SQLException;
+import java.util.Base64;
+
 import com.chatapp.common.model.User;
 import com.chatapp.data.dao.UserDAO;
 import com.chatapp.data.dao.impl.UserDAOImpl;
@@ -12,16 +18,51 @@ public class UserService {
     }
     
     public boolean authenticateUser(String email, String password) {
-        return userDAO.authenticate(email, password);
+        try {
+            User user = userDAO.findByEmail(email);
+            if (user == null) {
+                return false;
+            }
+            String hashedPassword = hashPassword(password);
+            return user.getPassword().equals(hashedPassword);
+        } catch (SQLException e) {
+            System.err.println("Database error during authentication: " + e.getMessage());
+            return false;
+        }
     }
     
     public boolean registerUser(String username, String password, String email) {
-        User newUser = new User(username, password, email);
-        return userDAO.create(newUser);
+        try {
+            // Check if user already exists
+            if (userDAO.findByEmail(email) != null) {
+                System.out.println("User with email " + email + " already exists");
+                return false;
+            }
+            
+            // Hash the password before storing
+            String hashedPassword = hashPassword(password);
+            User newUser = new User(username, hashedPassword, email);
+            
+            boolean success = userDAO.create(newUser);
+            if (success) {
+                System.out.println("Successfully registered user: " + email);
+            } else {
+                System.err.println("Failed to register user: " + email);
+            }
+            return success;
+        } catch (SQLException e) {
+            System.err.println("Database error during registration: " + e.getMessage());
+            return false;
+        }
     }
     
     public User findUserByEmail(String email) {
-        return userDAO.findByEmail(email);
+        try {
+            return userDAO.findByEmail(email);
+        } catch (SQLException e) {
+            System.err.println("Database error finding user: " + e.getMessage());
+            return null;
+        }
     }
     
     public boolean userExistsByEmail(String email) {
@@ -35,14 +76,31 @@ public class UserService {
      * Pour simplifier, nous utilisons ici newUsername et newPassword (ce dernier pouvant rester inchangé)
      * ainsi que la nouvelle URL de photo.
      */
-    public boolean updateUserProfile(String email, String newUsername, String newPassword, String profilePhoto) {
-        User user = findUserByEmail(email);
-        if (user == null) {
+    public boolean updateUserProfile(String email, String newUsername, String newPassword) {
+        try {
+            User user = findUserByEmail(email);
+            if (user == null) {
+                return false;
+            }
+            user.setUsername(newUsername);
+            if (newPassword != null && !newPassword.isEmpty()) {
+                user.setPassword(hashPassword(newPassword));
+            }
+            return userDAO.updateUserProfile(user);
+        } catch (SQLException e) {
+            System.err.println("Database error updating profile: " + e.getMessage());
             return false;
         }
-        user.setUsername(newUsername);    // On considère displayName = username, pour cet exemple
-        user.setPassword(newPassword);      // Vous pouvez modifier selon vos besoins
-        user.setProfilePhoto(profilePhoto); // Affecte la nouvelle photo de profil
-        return userDAO.updateUserProfile(user);
+    }
+    
+    private String hashPassword(String password) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            System.err.println("Error hashing password: " + e.getMessage());
+            return password; // Fallback to plain password if hashing fails
+        }
     }
 }

@@ -1,13 +1,16 @@
 package com.chatapp.client.controller;
 
+import java.sql.SQLException;
+
+import com.chatapp.common.model.User;
+import com.chatapp.data.dao.UserDAO;
+import com.chatapp.data.dao.impl.UserDAOImpl;
+
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
-import com.chatapp.common.model.User;
-import com.chatapp.data.dao.UserDAO;
-import com.chatapp.data.dao.impl.UserDAOImpl;
 
 /**
  * Contrôleur pour la vue profile-view.fxml
@@ -31,15 +34,20 @@ public class ProfileController {
      * Appelée par ChatController pour initialiser les données du profil à partir de l'email.
      */
     public void initData(String userEmail) {
-        // Récupère l'utilisateur correspondant en base
-        currentUser = userDAO.findByEmail(userEmail);
-        
-        if (currentUser != null) {
-            emailLabel.setText(currentUser.getEmail());  // Affiche l'email actuel
-            usernameField.setText(currentUser.getUsername());
-            passwordField.setText(currentUser.getPassword());
-        } else {
-            statusLabel.setText("Utilisateur introuvable en base.");
+        try {
+            // Récupère l'utilisateur correspondant en base
+            currentUser = userDAO.findByEmail(userEmail);
+            
+            if (currentUser != null) {
+                emailLabel.setText(currentUser.getEmail());  // Affiche l'email actuel
+                usernameField.setText(currentUser.getUsername());
+                passwordField.setText(currentUser.getPassword());
+            } else {
+                statusLabel.setText("Utilisateur introuvable en base.");
+            }
+        } catch (SQLException e) {
+            System.err.println("Database error: " + e.getMessage());
+            statusLabel.setText("Erreur lors de la récupération des données utilisateur.");
         }
     }
 

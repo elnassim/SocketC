@@ -1,26 +1,26 @@
 package com.chatapp.server.handler;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.Map;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.chatapp.server.service.UserService;
-import com.chatapp.server.service.FileService;
-import com.chatapp.server.service.GroupService;
-import com.chatapp.server.service.MessageService;
-import com.chatapp.server.service.GroupService;
 import com.chatapp.common.model.FileMessage;
 import com.chatapp.common.model.Group;
 import com.chatapp.common.model.Message;
 import com.chatapp.data.dao.MessageDAO;
 import com.chatapp.data.dao.impl.MessageDAOImpl;
+import com.chatapp.server.service.FileService;
+import com.chatapp.server.service.GroupService;
+import com.chatapp.server.service.MessageService;
+import com.chatapp.server.service.UserService;
 
 public class ClientHandler implements Runnable {
     private Socket clientSocket;
@@ -47,46 +47,140 @@ public class ClientHandler implements Runnable {
 
     
     @Override
-public void run() {
-    try {
-        String firstLine = in.readLine();          // ① reçoit la 1ʳᵉ requête
-        System.out.println("Received: " + firstLine);
+    public void run() {
+        try {
+            String firstLine = in.readLine();
+            System.out.println("Received: " + firstLine);
 
-        JSONObject req = new JSONObject(firstLine);
-        String reqType = req.optString("type", "LOGIN");   // par défaut = login
+            JSONObject req = new JSONObject(firstLine);
+            String reqType = req.optString("type", "LOGIN");
 
-        /* ---------- CAS 1 : REGISTER ---------- */
-        if ("REGISTER".equals(reqType)) {
+            if ("REGISTER".equals(reqType)) {
+                handleRegistration(req);
+                return;
+            }
+
+            if ("auth".equals(reqType)) {
+                handleAuthentication(req);
+            }
+
+        } catch (IOException | JSONException e) {
+            System.err.println("Error in ClientHandler: " + e.getMessage());
+            sendErrorResponse("Internal server error: " + e.getMessage());
+        } finally {
+            cleanup();
+        }
+    }
+
+    private void handleAuthentication(JSONObject req) {
+        try {
+            String email = req.getString("email");
+            String password = req.getString("password");
+            String publicKey = req.optString("publicKey", null);
+            this.userEmail = email;
+
+            System.out.println("Authenticating user: " + email);
+            
+            if (userService.authenticateUser(email, password)) {
+                System.out.println("Authentication successful for: " + email);
+                
+                JSONObject response = new JSONObject();
+                response.put("type", "auth");
+                response.put("success", true);
+                response.put("email", email);
+                if (publicKey != null) {
+                    response.put("publicKeyReceived", true);
+                }
+                
+                out.println(response.toString());
+                System.out.println("Sent success response: " + response.toString());
+                
+                handleChat();
+            } else {
+                System.out.println("Authentication failed for: " + email);
+                
+                JSONObject response = new JSONObject();
+                response.put("type", "auth");
+                response.put("success", false);
+                response.put("message", "Invalid email or password");
+                
+                out.println(response.toString());
+                System.out.println("Sent failure response: " + response.toString());
+            }
+        } catch (Exception e) {
+            System.err.println("Error during authentication: " + e.getMessage());
+            sendErrorResponse("Authentication error: " + e.getMessage());
+        }
+    }
+
+    private void handleRegistration(JSONObject req) {
+        try {
             String username = req.getString("username");
-            String email    = req.getString("email");
+            String email = req.getString("email");
             String password = req.getString("password");
 
+            // Validate email format
+            if (!email.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+                JSONObject response = new JSONObject();
+                response.put("type", "register");
+                response.put("success", false);
+                response.put("message", "Invalid email format");
+                out.println(response.toString());
+                return;
+            }
+
+            // Validate username
+            if (username.length() < 3) {
+                JSONObject response = new JSONObject();
+                response.put("type", "register");
+                response.put("success", false);
+                response.put("message", "Username must be at least 3 characters long");
+                out.println(response.toString());
+                return;
+            }
+
+            // Validate password
+            if (password.length() < 6) {
+                JSONObject response = new JSONObject();
+                response.put("type", "register");
+                response.put("success", false);
+                response.put("message", "Password must be at least 6 characters long");
+                out.println(response.toString());
+                return;
+            }
+
+            System.out.println("Attempting to register user: " + email);
             boolean created = userService.registerUser(username, password, email);
-            out.println(created ? "REGISTER_SUCCESS" : "REGISTER_FAILED");
-
-            // pas de session chat après inscription → on ferme tout de suite
-            return;   // ← termine le run()
+            
+            JSONObject response = new JSONObject();
+            response.put("type", "register");
+            response.put("success", created);
+            if (!created) {
+                response.put("message", "Registration failed - email might already be in use");
+            } else {
+                response.put("message", "Registration successful");
+            }
+            
+            System.out.println("Registration result for " + email + ": " + (created ? "success" : "failed"));
+            out.println(response.toString());
+        } catch (Exception e) {
+            System.err.println("Error during registration: " + e.getMessage());
+            e.printStackTrace();
+            sendErrorResponse("Registration error: " + e.getMessage());
         }
-
-        /* ---------- CAS 2 : LOGIN (déjà présent) ---------- */
-        String email    = req.getString("email");
-        String password = req.getString("password");
-        this.userEmail  = email;
-
-        if (userService.authenticateUser(email, password)) {
-            out.println("AUTH_SUCCESS");
-            handleChat();                               // ↳ boucle message
-        } else {
-            out.println("AUTH_FAILED");
-        }
-
-    } catch (IOException | JSONException e) {
-        System.err.println("Error: " + e.getMessage());
-    } finally {
-        cleanup();
     }
-}
 
+    private void sendErrorResponse(String message) {
+        try {
+            JSONObject response = new JSONObject();
+            response.put("type", "error");
+            response.put("success", false);
+            response.put("message", message);
+            out.println(response.toString());
+        } catch (JSONException e) {
+            System.err.println("Error creating error response: " + e.getMessage());
+        }
+    }
 
     private void cleanup() {
         try {
@@ -181,6 +275,7 @@ public void run() {
     }
 
     private void handleDirectMessage(String recipient, String content) throws JSONException {
+        // The message is already encrypted by the client, we just need to forward it
         JSONObject routingMessage = messageService.createPrivateMessage(userEmail, recipient, content);
         String messageId = routingMessage.getString("id");
 
